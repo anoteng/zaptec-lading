@@ -307,3 +307,14 @@ lading/
   finn.py       finner ID-ene til .env
   static/index.html
 ```
+
+## Lisens
+
+Copyright © 2026 Andreas Noteng
+
+Dette programmet er fri programvare: du kan distribuere det videre og/eller endre det under vilkårene i
+GNU General Public License, slik den er publisert av Free Software Foundation, enten versjon 3 av lisensen
+eller (etter ditt valg) en hvilken som helst senere versjon (`GPL-3.0-or-later`).
+
+Programmet distribueres i håp om at det er nyttig, men UTEN NOEN GARANTI, heller ikke underforstått garanti
+om SALGBARHET eller EGNETHET FOR ET BESTEMT FORMÅL. Se [LICENSE](LICENSE) for hele lisensteksten.
