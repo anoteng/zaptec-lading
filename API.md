@@ -65,6 +65,7 @@ De viktigste feltene:
 | `lader.effekt_w`, `lader.okt_kwh`, `lader.strom_satt` | Effekt nå, kWh denne tilkoblingen og strømgrensen i A |
 | `priser[]` | Per time i dag og i morgen: `start`, `spot` (eks. mva), `energiledd`, `din_pris` (strøm + påslag − støtte + energiledd), `lavtariff` |
 | `timer[]` | Siste 48 timer: `hus` (kWh totalt), `lader` (kWh elbil), `kilde` |
+| `effektvarsel` | Vurdering av denne timen, eller `null` uten ferske data. Se under |
 | `kilder` | Per datakilde (`tibber`, `zaptec`, `priser`, `elvia`): `sist_ok`, `feil` og `info` |
 | `styring` | Se under |
 
@@ -84,6 +85,22 @@ De viktigste feltene:
 | `stopp_i_okt` | Stopp brukt i denne tilkoblingen |
 | `advarsler[]` | F.eks. at Eco-modus er på i Zaptec |
 | `logg[]` | Siste beslutninger, nyeste først: `ts`, `handling`, `detaljer`, `utfort`, `feil` |
+
+`effektvarsel`: om forbruket utenom elbilen ligger an til å øke kapasitetstrinnet.
+
+| Felt | Betydning |
+|---|---|
+| `niva` | `ok`, `forvarsel` (over trinnets øvre grense, spiser av marginen) eller `varsel` (trinnet øker) |
+| `prognose`, `hittil` | kWh for timen, anslått og så langt. Prognosen antar at bilen pauses, med mindre `lad_naa` |
+| `grense` | kWh timen kan bli før trinnet øker. `sikker` er trinnets øvre grense |
+| `kutt_kw`, `rest_min` | Hvor mange kW som må skrus av resten av timen, og hvor mange minutter som er igjen |
+| `kan_rekkes` | `false` hvis det er for sent, eller kuttet er større enn forbruket |
+| `nytt_trinn`, `ekstra_kr` | Trinnet og ekstrakostnaden per måned hvis grensen passeres |
+| `last_kw`, `lader_kw`, `lad_naa` | Husets effekt utenom bilen (5 min snitt), bilens effekt, og om «Lad nå» er på |
+
+Ved `niva == "varsel"` er det nyttigste en assistent kan gjøre å si fra med `kutt_kw` og `rest_min`, og
+eventuelt foreslå å slå av store forbrukere: varmtvannsbereder, ovner, tørketrommel eller varmepumpe.
+Tjenesten sender selv push-varsel.
 
 ### `POST /api/overstyring`: styr ladingen
 
@@ -165,7 +182,7 @@ Den totale elbilkostnaden er `elbil.totalt.sum + elbil.kapasitet_ekstra`.
 | Når lader den i natt? | `styring.plan.valgte` (sammenhengende timer kan slås sammen til intervaller) |
 | Hvorfor lader den ikke? | `styring.handling` og `styring.grunn` |
 | Hva koster strømmen nå? | Raden i `priser` der `start <= nå < start + 3600`, feltet `din_pris` |
-| Er vi nær neste kapasitetstrinn? | `time.prognose` mot `maaned.tak_idag.sikkert`, og `maaned.trinn` |
+| Er vi nær neste kapasitetstrinn? | `effektvarsel.niva`, `effektvarsel.prognose` mot `effektvarsel.grense` |
 | Hva blir strømregningen? | `/api/regning`: `inneverende.prognose.sum` |
 | Hva har elbilen kostet? | `/api/regning`: `elbil.totalt.sum + elbil.kapasitet_ekstra` |
 

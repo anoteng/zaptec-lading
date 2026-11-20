@@ -6,7 +6,7 @@ import signal
 
 import aiohttp
 
-from . import avtale, config, elvia, priser, styring, tibber, web, zaptec
+from . import avtale, config, effektvarsel, elvia, priser, styring, tibber, varsel, web, zaptec
 from .db import DB
 from .tilstand import Tilstand
 
@@ -19,9 +19,10 @@ async def main(cfg: dict):
     tilstand = Tilstand()
     timeout = aiohttp.ClientTimeout(total=120)
     async with aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": "lading/0.1"}) as http:
+        varsel.oppsett(cfg, http)
         await web.kjor(cfg, db, tilstand)
         oppgaver = [asyncio.create_task(m.kjor(cfg, db, tilstand, http), name=m.__name__)
-                    for m in (tibber, zaptec, priser, elvia, styring)]
+                    for m in (tibber, zaptec, priser, elvia, styring, effektvarsel)]
         stopp = asyncio.Event()
         loop = asyncio.get_running_loop()
         for s in (signal.SIGINT, signal.SIGTERM):

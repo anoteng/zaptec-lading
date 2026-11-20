@@ -30,6 +30,8 @@ Prioriteringene er, i rekkefølge:
   grensen for månedens kapasitetstrinn, med en liten margin. De første ti dagene i måneden brukes forrige måneds
   trinn som gulv. Blir det for lite plass igjen, pauses ladingen resten av timen.
 - **Fasevakt:** strømmen senkes straks hvis en fase nærmer seg hovedsikringen.
+- **Effektvarsel:** push-varsel mens timen pågår hvis forbruket *utenom* bilen ligger an til å øke
+  kapasitetstrinnet. Varselet sier hvor mye som må skrus av, og hvor lenge (se [Varsler](#varsler)).
 - **Overstyring fra websiden:**
   - **Lad nå:** full effekt uten trinngrense, til bilen kobles fra.
   - **Ikke lad i natt.**
@@ -231,9 +233,31 @@ Den viser bare `{"ok": true/false}`.
 
 ## Varsler
 
-Feilende kommandoer og en bil som ikke starter igjen etter pause varsles med kommandoen `varsle`
-(`/usr/local/bin/varsle "Tittel" "Melding" [prioritet] [tagger]`), for eksempel et lite skript som sender videre
-til ntfy. Finnes ikke kommandoen, logges varselet bare. Se `lading/varsel.py`.
+Varsler sendes som push via [ntfy](https://ntfy.sh): installer ntfy-appen på mobilen, abonner på et topic, og
+legg adressen i `.env` som `NTFY_URL=https://ntfy.sh/<langt-tilfeldig-navn>`. Alle som kjenner topic-navnet,
+kan lese varslene, så bruk et langt, tilfeldig navn, eller en egen ntfy-server med `NTFY_TOKEN`.
+Uten `NTFY_URL` brukes kommandoen `/usr/local/bin/varsle "Tittel" "Melding" [prioritet] [tagger]` hvis den finnes,
+ellers havner varslene bare i loggen.
+
+| Varsel | Når |
+|---|---|
+| **Kutt ca. X kW de neste N min** (høy prioritet) | Timen ligger an til å øke kapasitetstrinnet, se under |
+| OK, holdt / timen gikk over grensen | Etter en time det ble varslet for |
+| Kommando feilet | En kommando til laderen ble avvist |
+| Lading starter ikke | Tre forsøk på å gjenoppta uten at bilen lader |
+
+**Effektvarsel.** Hvert 30. sekund regner tjenesten ut hvor mye denne klokketimen kan bli før snittet av
+månedens tre høyeste døgnmakser går over trinnets grense. Den regner med de faktiske døgnmaksene så langt og et
+anslag for resten av måneden. Prognosen antar at elbilen pauses, siden effektvakta tar seg av den, med mindre
+«Lad nå» er på. Husets effekt er snittet av de siste fem minuttene, så vannkoker og induksjon ikke gir falsk alarm.
+- **Push:** når prognosen er over grensen minus marginen, tidligst 5 minutter ut i timen (`LADING_VARSEL_EFFEKT_FRA_MIN`).
+  Varselet sier hvor mange kW som må kuttes resten av timen, og hva det koster ellers.
+- **Hvor ofte:** høyst ett varsel per time. Nytt varsel samme time bare hvis det må kuttes minst 1 kW mer.
+- **Når det er for sent:** med mindre enn 3 minutter igjen, eller når kuttet er større enn forbruket, går det
+  ikke push. Det vises bare på siden.
+- **Forvarsel:** når timen går over trinnets øvre grense, men ikke øker trinnet, vises det bare på statussiden.
+  Timen spiser da av marginen for resten av måneden.
+- **Slå av:** `LADING_VARSEL_EFFEKT=false`. `LADING_VARSEL_LENKE` gir en adresse som åpnes når man trykker på varselet.
 
 ## API
 
@@ -307,6 +331,8 @@ lading/
   status.py     data til statussiden, kapasitetstrinn
   plan.py       hvilke timer bilen skal lade
   styring.py    effektvakt, fasevakt, overstyring og utførelse
+  effektvarsel.py  varsel når timen ligger an til å øke kapasitetstrinnet
+  varsel.py     push-varsler via ntfy
   avtale.py     strømavtale og støtteordning
   regning.py    strømregning, prognose og historikk
   elbil.py      hva elbilen koster

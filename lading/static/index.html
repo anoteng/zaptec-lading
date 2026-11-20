@@ -74,6 +74,9 @@ button:disabled { opacity: .45; cursor: default; }
 .rediger td { vertical-align: middle; } .rediger label { white-space: nowrap; margin-right: 8px; }
 .rediger-wrap { overflow-x: auto; }
 .status-ok { color: var(--good-text); }
+.alarm { border-left: 4px solid var(--crit); background: var(--surface); border-radius: 0 10px 10px 0; padding: 10px 14px;
+  margin-bottom: 12px; box-shadow: 0 0 0 1px var(--ring); }
+.alarm b { font-size: 16px; }
 .knapper { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
 .timer { display: flex; gap: 3px; margin: 8px 0 4px; }
 .timer > div { flex: 1; min-width: 0; text-align: center; font-size: 12px; color: var(--muted); }
@@ -97,6 +100,7 @@ td .forkl { display: block; color: var(--muted); font-size: 12px; }
     <span class="sub" id="tid">laster …</span>
     <span class="pill" id="tariff"></span>
   </header>
+  <div id="effektvarsel" role="status" aria-live="polite"></div>
 
   <section class="grid">
     <div class="card"><div class="label">Huset nå</div><div class="big" id="hus">–</div><div class="sub" id="hus-sub"></div></div>
@@ -306,6 +310,16 @@ function tegn(d) {
       $("time-bar-txt").textContent = `Strek: ${nf(tak.sikkert, 0)} kWh, grensen for trinn ${m.trinn.nr}`;
     }
   }
+  const ev = d.effektvarsel;
+  if (ev) $("time-bar-txt").textContent += ` · trinnet øker først over ${nf(ev.grense, 1)} kWh` +
+    (ev.niva === "forvarsel" ? ". Timen går over streken og spiser av marginen for resten av måneden." : "");
+  $("effektvarsel").innerHTML = ev && ev.niva === "varsel"
+    ? `<div class="alarm"><b>${ev.kan_rekkes ? `Kutt ca. ${nf(ev.kutt_kw, 1)} kW de neste ${Math.round(ev.rest_min)} min` : "Timen ligger an til å øke kapasitetstrinnet"}</b><br>` +
+      `Timen ligger an til ${nf(ev.prognose, 1)} kWh. Grensen er ${nf(ev.grense, 1)} kWh; over den går nettleien opp til trinn ${ev.nytt_trinn}` +
+      (ev.ekstra_kr ? ` (+${nf(ev.ekstra_kr, 0)} kr/mnd)` : "") + `. Huset bruker ${nf(ev.last_kw, 1)} kW` +
+      (ev.lad_naa ? `, med elbilen på «Lad nå». Trykk «Automatisk» under Ladestyring for å la effektvakta styre bilen.` :
+       ev.lader_kw > 0.1 ? " utenom elbilen, som styres ned automatisk." : ".") + `</div>`
+    : "";
 
   const tr = m.trinn;
   $("trinn").innerHTML = `Trinn ${tr.nr} <small>${tr.kr} kr/mnd</small>`;

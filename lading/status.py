@@ -141,6 +141,7 @@ def bygg(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
         "tariff_naa": {"lavtariff": lav, "energiledd": energiledd,
                        "ordning": ordning(cfg, idag)},
         "maaned": maaned(db, cfg, prognose, idag),
+        "effektvarsel": tilstand.effektvarsel,
         "lader": lader,
         "installasjon": tilstand.installasjon,
         "priser": priser(db, cfg, dognstart(idag), dognstart(idag + dt.timedelta(days=2))),

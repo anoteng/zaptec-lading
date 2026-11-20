@@ -32,6 +32,7 @@ class Tilstand:
     lader: dict | None = None          # siste Zaptec-status
     installasjon: dict | None = None   # siste installasjonsinfo
     styring: dict | None = None        # siste beslutning fra styringen
+    effektvarsel: dict | None = None   # siste vurdering av om timen øker kapasitetstrinnet
     oppfrisk: asyncio.Event = field(default_factory=asyncio.Event)  # be Zaptec-løkka hente status nå
     styr_naa: asyncio.Event = field(default_factory=asyncio.Event)  # be styringen regne på nytt nå
     kilder: dict[str, Kilde] = field(default_factory=lambda: {
