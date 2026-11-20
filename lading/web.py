@@ -1,6 +1,7 @@
 """Webgrensesnitt: statusside, JSON-API og overstyring av ladingen."""
 import logging
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from aiohttp import web
 
@@ -12,7 +13,35 @@ log = logging.getLogger("lading.web")
 STATISK = Path(__file__).parent / "static"
 
 
+LOKALE = {"127.0.0.1", "localhost", "::1"}
+
+
+def tillatte_verter(cfg: dict) -> set[str]:
+    wc = cfg["web"]
+    verter = set(LOKALE) | {v.strip().lower() for v in str(wc.get("verter", "")).split(",") if v.strip()}
+    if wc["host"] not in ("0.0.0.0", "::", ""):
+        verter.add(wc["host"].lower())
+    return verter
+
+
 def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
+    verter, avvist = tillatte_verter(cfg), set()
+
+    @web.middleware
+    async def vertsjekk(req: web.Request, handler):
+        # Uten innlogging må vi i det minste avvise ukjente vertsnavn: ellers kan en ondsinnet nettside
+        # bruke DNS rebinding til å nå 127.0.0.1 fra en nettleser på samme maskin.
+        try:
+            vert = (urlsplit("//" + (req.host or "")).hostname or "").lower()
+        except ValueError:
+            vert = ""
+        if vert not in verter:
+            if vert not in avvist and len(avvist) < 100:
+                avvist.add(vert)
+                log.warning("avviste forespørsel med ukjent vertsnavn %r (legg det i LADING_WEB_VERTER hvis det er ønsket)", vert)
+            return web.json_response({"feil": "ukjent vertsnavn"}, status=421)
+        return await handler(req)
+
     async def forside(_):
         return web.FileResponse(STATISK / "index.html", headers={"Cache-Control": "no-cache"})
 
@@ -64,7 +93,7 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
         ok = all(v.feil is None and v.sist_ok for v in (k["tibber"], k["zaptec"]))
         return web.json_response({"ok": ok}, status=200 if ok else 503)
 
-    app = web.Application()
+    app = web.Application(middlewares=[vertsjekk])
     app.router.add_get("/", forside)
     app.router.add_get("/api/status", api_status)
     app.router.add_get("/api/regning", api_regning)

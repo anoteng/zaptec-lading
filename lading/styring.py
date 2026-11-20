@@ -38,7 +38,7 @@ def overstyring(db: DB, naa_ts: float) -> dict | None:
 
 def sett_overstyring(db: DB, cfg: dict, type_: str, timer: int | None = None) -> dict | None:
     if type_ not in OVERSTYRINGER:
-        raise ValueError(type_)
+        raise ValueError(f"ukjent type {type_!r}, gyldige: {', '.join(OVERSTYRINGER)}")
     if type_ == "auto":
         db.lagre("overstyring", None)
         return None

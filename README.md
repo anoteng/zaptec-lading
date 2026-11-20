@@ -167,8 +167,11 @@ For et annet nettselskap erstattes periodene med deres tariff.
 
 ## Tilgang utenfra (Cloudflare Tunnel)
 
-Tjenesten har ingen innlogging eller brukerstyring. Den har bare et enkelt vern mot at *andre nettsider* i din
-nettleser kan sende kommandoer (krav om en egen header), og det beskytter ikke mot direkte tilgang.
+Tjenesten har ingen innlogging eller brukerstyring. Den har bare to enkle vern mot misbruk via nettleser:
+- krav om en egen header, så *andre nettsider* ikke kan sende kommandoer,
+- avvisning av ukjente vertsnavn, som verner mot DNS rebinding.
+
+Ingen av dem beskytter mot direkte tilgang. Alle prosesser og brukere på maskinen kan bruke API-et fullt ut.
 Den som når porten, kan blant annet:
 - starte lading for fullt midt på dagen og løfte kapasitetstrinnet for hele måneden,
 - stoppe ladingen før du skal kjøre,
@@ -216,6 +219,8 @@ forespørsel slipper gjennom til tjenesten. Det er gratis for private brukere og
 
 5. Test fra mobilnettet. Du skal få innloggingssiden til Access, ikke statussiden direkte.
 
+Legg også adressen inn i `.env`, så tjenesten godtar den: `LADING_WEB_VERTER=lading.ditt-domene.no`.
+
 Har du allerede en tunnel for andre tjenester, legger du bare til en ny `hostname` under `ingress`.
 `/helse` kan unntas fra Access med en egen *Bypass*-policy på stien hvis ekstern overvåking trenger den.
 Den viser bare `{"ok": true/false}`.
@@ -243,6 +248,8 @@ til ntfy. Finnes ikke kommandoen, logges varselet bare. Se `lading/varsel.py`.
 | `GET /helse` | 200 når Tibber og Zaptec svarer, ellers 503 (for overvåking) |
 
 POST krever `Content-Type: application/json` og headeren `X-Lading: 1`.
+Forespørsler med andre vertsnavn enn `127.0.0.1`, `localhost`, `::1` og `LADING_WEB_VERTER` avvises med 421.
+[API.md](API.md) beskriver alle felt og er skrevet slik at den kan gis til en KI-assistent på samme maskin.
 
 ## Data og backup
 

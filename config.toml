@@ -126,8 +126,12 @@ maks_stopp = 4             # pauser per tilkobling (laderen tillater 5)
 lad_naa_timer = 12         # «lad nå» varer så lenge, eller til bilen kobles fra
 
 [web]
-host = "127.0.0.1"
+host = "127.0.0.1"         # IKKE 0.0.0.0: websiden har ingen innlogging
 port = 8093
+# Vertsnavn som godtas i Host-headeren i tillegg til 127.0.0.1, localhost og ::1, kommaseparert.
+# Legg inn den offentlige adressen hvis du bruker Cloudflare Tunnel, f.eks. "lading.ditt-domene.no".
+# Alt annet avvises (vern mot DNS rebinding fra en nettleser på samme maskin).
+verter = ""
 
 [db]
 sti = "data/lading.db"
