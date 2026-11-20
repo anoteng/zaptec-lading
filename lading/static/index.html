@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lading</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%232a78d6' d='M13 2 4 14h7l-1 8 9-12h-7z'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --band: rgba(42,120,214,0.07);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;
+  --good: #0ca30c; --good-text: #006300; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --band: rgba(57,135,229,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --good-text: #0ca30c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10); --band: rgba(57,135,229,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --good-text: #0ca30c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 16px; }
+h1 { font-size: 22px; margin: 0; font-weight: 650; }
+h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+.sub { color: var(--ink-2); }
+.muted { color: var(--muted); }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin-bottom: 12px; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+.label { color: var(--ink-2); font-size: 13px; }
+.big { font-size: 30px; font-weight: 650; line-height: 1.15; margin: 2px 0; }
+.big small { font-size: 15px; font-weight: 500; color: var(--ink-2); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 10px;
+  border-radius: 999px; border: 1px solid var(--ring); color: var(--ink-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.bar { position: relative; height: 10px; background: var(--grid); border-radius: 5px; margin: 8px 0 4px; overflow: hidden; }
+.bar > span { position: absolute; inset: 0 auto 0 0; background: var(--s1); border-radius: 5px; }
+.bar > i { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink-2); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+td, th { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-weight: 500; color: var(--ink-2); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.warn { border-left: 3px solid var(--warn); padding: 6px 10px; margin-top: 10px; font-size: 14px; background: var(--page); border-radius: 0 6px 6px 0; }
+.legend { display: flex; gap: 14px; font-size: 13px; color: var(--ink-2); margin: -4px 0 6px; flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
+  box-shadow: 0 4px 16px rgba(0,0,0,.12); border-radius: 8px; padding: 6px 10px; font-size: 13px; display: none; z-index: 10; white-space: nowrap; }
+details { margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+details table { margin-top: 6px; }
+.err { color: var(--crit); }
+button, .knapp { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--ring);
+  background: var(--page); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--ink-2); }
+button.valgt { background: var(--s1); border-color: var(--s1); color: #fff; }
+input[type=number], input[type=date], input[type=text], select { font: inherit; font-size: 14px; width: 64px; padding: 5px 6px;
+  border-radius: 8px; border: 1px solid var(--ring); background: var(--page); color: var(--ink); }
+input[type=number].bred { width: 84px; } input[type=date] { width: auto; } input[type=text] { width: 100%; min-width: 120px; } select { width: auto; }
+button:disabled { opacity: .45; cursor: default; }
+.rediger td { vertical-align: middle; } .rediger label { white-space: nowrap; margin-right: 8px; }
+.rediger-wrap { overflow-x: auto; }
+.status-ok { color: var(--good-text); }
+.knapper { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.timer { display: flex; gap: 3px; margin: 8px 0 4px; }
+.timer > div { flex: 1; min-width: 0; text-align: center; font-size: 12px; color: var(--muted); }
+.timer .blokk { height: 26px; border-radius: 4px; background: var(--grid); margin-bottom: 3px; position: relative; }
+.timer .lav .blokk { background: var(--band); outline: 1px solid var(--ring); outline-offset: -1px; }
+.timer .valgt .blokk { background: var(--s1); }
+.timer .forbi { opacity: .5; }
+.timer .naa .blokk { box-shadow: 0 0 0 2px var(--ink-2); }
+.timer .ladet .blokk::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 6px; height: 6px; margin-left: -3px;
+  border-radius: 50%; background: var(--s2); }
+.modus { font-size: 13px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--ring); }
+.tall { display: flex; flex-wrap: wrap; gap: 8px 40px; margin-bottom: 4px; }
+tr.sum td { font-weight: 600; border-bottom: none; }
+td .forkl { display: block; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Lading</h1>
+    <span class="sub" id="tid">laster …</span>
+    <span class="pill" id="tariff"></span>
+  </header>
+
+  <section class="grid">
+    <div class="card"><div class="label">Huset nå</div><div class="big" id="hus">–</div><div class="sub" id="hus-sub"></div></div>
+    <div class="card"><div class="label">Laderen</div><div class="big" id="lader">–</div><div class="sub" id="lader-sub"></div></div>
+    <div class="card"><div class="label">Denne timen</div><div class="big" id="time">–</div><div class="sub" id="time-sub"></div>
+      <div class="bar" id="time-bar"><span></span><i></i></div><div class="muted" id="time-bar-txt" style="font-size:12px"></div></div>
+    <div class="card"><div class="label">Kapasitetstrinn denne måneden</div><div class="big" id="trinn">–</div><div class="sub" id="trinn-sub"></div>
+      <div class="bar" id="trinn-bar"><span></span></div><div class="muted" id="trinn-bar-txt" style="font-size:12px"></div></div>
+  </section>
+
+  <section class="grid">
+    <div class="card wide">
+      <h2 style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">Ladestyring <span class="modus" id="st-modus"></span></h2>
+      <div class="big" id="st-handling" style="font-size:22px">–</div><div class="sub" id="st-grunn"></div>
+      <div id="st-advarsler"></div>
+      <div class="label" style="margin-top:12px" id="st-plan-tittel">Plan</div>
+      <div class="timer" id="st-timer"></div>
+      <div class="legend" style="margin-top:4px"><span><i class="sw" style="background:var(--s1)"></i>Planlagt lading</span>
+        <span><i class="sw" style="background:var(--band);outline:1px solid var(--ring)"></i>Natt/helg-tariff</span>
+        <span><i class="sw" style="background:var(--s2);border-radius:50%;width:8px;height:8px"></i>Har ladet</span></div>
+      <div class="knapper" id="st-knapper">
+        <button data-type="auto">Automatisk</button>
+        <button data-type="lad_naa" title="Full effekt nå, ignorerer kapasitetstaket. Varer til bilen kobles fra.">Lad nå</button>
+        <button data-type="pause" title="Ingen lading før neste avreise">Ikke lad i natt</button>
+        <span style="display:inline-flex;gap:6px;align-items:center">
+          <input type="number" id="st-antall" min="0" max="24" step="1" aria-label="Antall ladetimer"> timer i natt
+          <button data-type="timer">Bruk</button></span>
+      </div>
+      <div class="sub" id="st-overstyring"></div>
+      <details><summary>Siste beslutninger</summary><div id="st-logg"></div></details>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card wide">
+      <h2 id="regning-tittel">Strømregning</h2>
+      <div class="tall">
+        <div><div class="label">Hittil</div><div class="big" id="regning-hittil">–</div><div class="sub" id="regning-hittil-sub"></div></div>
+        <div><div class="label">Prognose for hele måneden</div><div class="big" id="regning-prognose">–</div><div class="sub" id="regning-prognose-sub"></div></div>
+      </div>
+      <details><summary>Vis fordeling</summary><div id="regning-fordeling"></div></details>
+      <h2 style="margin-top:18px">Per måned</h2>
+      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Strøm etter støtte</span>
+        <span><i class="sw" style="background:var(--s2)"></i>Nettleie, energiledd</span>
+        <span><i class="sw" style="background:var(--s3)"></i>Nettleie, kapasitetsledd</span>
+        <span class="muted">Siste søyle: prognose</span></div>
+      <div id="chart-regning"></div>
+      <details><summary>Vis som tabell</summary><div id="tab-regning"></div></details>
+      <p class="muted" id="regning-note" style="margin:8px 0 0;font-size:13px"></p>
+    </div>
+    <div class="card wide">
+      <h2>Hva elbilen koster</h2>
+      <div class="big" id="elbil-sum">–</div><div class="sub" id="elbil-sub"></div>
+      <p id="elbil-kap" style="margin:8px 0"></p>
+      <div id="elbil-okter"></div>
+      <p class="muted" style="margin:8px 0 0;font-size:13px">Strøm (spot + påslag, etter Norgespris eller strømstønad) + nettleiens energiledd for timene bilen lader,
+        pluss kapasitetsledd bilen eventuelt løfter måneden opp i. Fastbeløp er ikke med. Kilde: laderens målte effekt.</p>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card wide">
+      <h2>Forbruk siste 48 timer</h2>
+      <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Huset ellers</span>
+        <span><i class="sw" style="background:var(--s2)"></i>Elbil</span>
+        <span><i class="sw" style="background:var(--band);outline:1px solid var(--ring)"></i>Natt/helg-tariff</span>
+        <span><i class="sw" style="height:2px;background:var(--ink-2)"></i>Grense for trinnet</span></div>
+      <div id="chart-timer"></div>
+      <details><summary>Vis som tabell</summary><div id="tab-timer"></div></details>
+    </div>
+    <div class="card wide">
+      <h2>Spotpris i dag og i morgen <span class="muted" style="font-weight:400">(eks. mva, kr/kWh<span id="pris-ordning"></span>)</span></h2>
+      <div class="legend"><span><i class="sw" style="background:var(--band);outline:1px solid var(--ring)"></i>Natt/helg-tariff (lavere nettleie)</span></div>
+      <div id="chart-pris"></div>
+      <details><summary>Vis som tabell</summary><div id="tab-pris"></div></details>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card wide" id="innst">
+      <h2>Strømavtale og støtte</h2>
+      <div class="sub" id="innst-naa">laster …</div>
+      <details id="innst-detaljer"><summary>Endre strømavtale og støtteordning</summary>
+        <p style="margin:8px 0">Hver rad gjelder fra og med datoen til neste rad tar over. Endringer regnes også bakover,
+          så legg inn hele historikken fra strømleverandøren. Påslag og fastbeløp med mva, slik de står på fakturaen.</p>
+        <h2 style="margin-top:14px">Støtteordning</h2>
+        <div class="rediger-wrap" id="in-ordninger"></div>
+        <div class="knapper"><button type="button" data-legg="ordninger">Legg til periode</button></div>
+        <h2 style="margin-top:14px">Strømavtale</h2>
+        <div class="rediger-wrap" id="in-avtaler"></div>
+        <div class="knapper"><button type="button" data-legg="avtaler">Legg til avtale</button></div>
+        <div class="knapper" style="margin-top:16px">
+          <button type="button" class="valgt" id="in-lagre">Lagre</button>
+          <button type="button" id="in-angre">Angre endringer</button>
+          <button type="button" id="in-tilbake" title="Slett det som er lagret her og bruk verdiene i config.toml">Tilbakestill til config.toml</button>
+          <span id="in-status" class="sub"></span>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>Månedens døgnmakser</h2><div id="maaned"></div></div>
+    <div class="card"><h2>Lader</h2><div id="lader-detaljer"></div></div>
+    <div class="card"><h2>Fasestrøm</h2><div id="faser"></div></div>
+    <div class="card"><h2>Datakilder</h2><div id="kilder"></div></div>
+  </section>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const nf = (x, d = 1) => x == null ? "–" : x.toLocaleString("nb-NO", { minimumFractionDigits: d, maximumFractionDigits: d });
+const kl = ts => new Date(ts * 1000).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
+const siden = ts => { if (!ts) return "aldri"; const s = Date.now() / 1000 - ts;
+  return s < 90 ? `${Math.round(s)} s siden` : s < 5400 ? `${Math.round(s / 60)} min siden` : s < 172800 ? `${Math.round(s / 3600)} t siden` : `${Math.round(s / 86400)} d siden`; };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const KILDE = { elvia: "Elvia", maaler: "Pulse (måler)", estimat: "Pulse (estimat)", prognose: "prognose" };
+
+const tip = $("tip");
+function visTip(e, html) { tip.innerHTML = html; tip.style.display = "block";
+  const w = tip.offsetWidth; tip.style.left = Math.min(e.clientX + 12, innerWidth - w - 8) + "px"; tip.style.top = (e.clientY + 14) + "px"; }
+function skjulTip() { tip.style.display = "none"; }
+
+// Søylediagram med valgfri stabling, bakgrunnsbånd og referanselinje.
+function soyler(el, rader, { serier, band, ref, tipHtml, ymaksMin = 0, enhet = "" }) {
+  const W = Math.max(320, el.clientWidth || 600), H = 220, P = { l: 38, r: 8, t: 10, b: 24 };
+  const sum = r => serier.reduce((a, s) => a + Math.max(0, s.v(r) || 0), 0);
+  let ymax = Math.max(ymaksMin, ref || 0, ...rader.map(sum)) * 1.03 || 1;
+  // Minste «pene» steg (1, 2, 2,5 eller 5 ganger en tierpotens) som gir høyst fem intervaller.
+  const mag = 10 ** Math.floor(Math.log10(ymax / 5));
+  const steg = [1, 2, 2.5, 5, 10, 20].map(f => f * mag).find(st => Math.ceil(ymax / st - 1e-9) <= 5);
+  const linjer = Math.ceil(ymax / steg - 1e-9);
+  ymax = linjer * steg;
+  const des = Number.isInteger(+steg.toFixed(6)) ? 0 : Number.isInteger(+(steg * 10).toFixed(6)) ? 1 : 2;
+  P.l = Math.max(38, 12 + 6.5 * nf(ymax, des).length);
+  const n = rader.length, iw = W - P.l - P.r, ih = H - P.t - P.b, bw = iw / n;
+  const y = v => P.t + ih - v / ymax * ih;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  rader.forEach((r, i) => { if (band && band(r)) s += `<rect x="${P.l + i * bw}" y="${P.t}" width="${bw}" height="${ih}" fill="var(--band)"/>`; });
+  for (let k = 0; k <= linjer; k++) {
+    const v = k * steg;
+    s += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 0 ? "var(--axis)" : "var(--grid)"}" stroke-width="1"/>`;
+    s += `<text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end">${nf(v, des)}</text>`;
+  }
+  const gap = Math.min(2, bw * 0.15), radius = Math.min(4, (bw - 2 * gap) / 2);
+  rader.forEach((r, i) => {
+    let bunn = 0; const x = P.l + i * bw + gap, w = Math.max(1, bw - 2 * gap);
+    const synlige = serier.filter(se => (se.v(r) || 0) > 0);
+    synlige.forEach((se, j) => {
+      const v = se.v(r), y0 = y(bunn), y1 = y(bunn + v), h = Math.max(0, y0 - y1 - (j < synlige.length - 1 ? 2 : 0));
+      const topp = j === synlige.length - 1;
+      const op = se.opacity ? se.opacity(r) : 1;
+      s += topp && h > radius
+        ? `<path d="M${x},${y0} V${y0 - h + radius} q0,-${radius} ${radius},-${radius} h${w - 2 * radius} q${radius},0 ${radius},${radius} V${y0} Z" fill="${se.farge}" opacity="${op}"/>`
+        : `<rect x="${x}" y="${y0 - h}" width="${w}" height="${h}" fill="${se.farge}" opacity="${op}"/>`;
+      bunn += v;
+    });
+    if (r.markert) s += `<line x1="${P.l + (i + .5) * bw}" x2="${P.l + (i + .5) * bw}" y1="${P.t}" y2="${P.t + ih}" stroke="var(--ink-2)" stroke-dasharray="2 3"/>`;
+    if (r.etikett) s += `<text x="${P.l + (i + .5) * bw}" y="${H - 6}" text-anchor="middle">${r.etikett}</text>`;
+    s += `<rect class="hit" data-i="${i}" x="${P.l + i * bw}" y="${P.t}" width="${bw}" height="${ih}" fill="transparent"/>`;
+  });
+  if (ref) s += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(ref)}" y2="${y(ref)}" stroke="var(--ink-2)" stroke-width="2"/>` +
+    `<text x="${W - P.r}" y="${y(ref) - 5}" text-anchor="end" style="fill:var(--ink-2)">${nf(ref, 0)} ${enhet}</text>`;
+  el.innerHTML = s + "</svg>";
+  el.querySelectorAll(".hit").forEach(h => {
+    h.addEventListener("mousemove", e => visTip(e, tipHtml(rader[+h.dataset.i])));
+    h.addEventListener("mouseleave", skjulTip);
+  });
+}
+
+function tabell(kolonner, rader) {
+  return `<table><tr>${kolonner.map(k => `<th class="${k.n ? "n" : ""}">${k.t}</th>`).join("")}</tr>` +
+    rader.map(r => `<tr>${kolonner.map(k => `<td class="${k.n ? "n" : ""}">${k.v(r)}</td>`).join("")}</tr>`).join("") + "</table>";
+}
+
+let sist = null;
+function tegn(d) {
+  sist = d;
+  $("tid").textContent = new Date(d.tid).toLocaleString("nb-NO", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  const t = d.tariff_naa;
+  const o = t.ordning || {};
+  $("pris-ordning").textContent = o.ordning === "norgespris" ? ` – du betaler Norgespris, ${nf(o.pris * 100, 0)} øre`
+    : o.ordning === "stromstotte" ? ` – strømstønad dekker ${nf(o.grad * 100, 0)} % over ${nf(o.terskel * 100, 0)} øre` : "";
+  $("tariff").innerHTML = `<i class="dot" style="background:${t.lavtariff ? "var(--good)" : "var(--warn)"}"></i>${t.lavtariff ? "Natt/helg-tariff" : "Dagtariff"} · nettleie ${nf(t.energiledd * 100, 1)} øre/kWh`;
+
+  const n = d.naa;
+  if (n) {
+    $("hus").innerHTML = `${nf(n.effekt_w / 1000, 2)} <small>kW</small>`;
+    $("hus-sub").innerHTML = `Uten elbil ${nf(n.grunnlast_w / 1000, 2)} kW` + (n.fersk ? "" : ` · <span class="err">gammel måling (${siden(n.mottatt)})</span>`);
+  }
+  const l = d.lader;
+  if (l) {
+    $("lader").innerHTML = `${nf(l.effekt_w / 1000, 1)} <small>kW</small>`;
+    $("lader-sub").textContent = l.modus_tekst + (l.modus === 3 && l.strom_satt ? ` · ${nf(l.strom_satt, 0)} A` : "");
+  }
+
+  const m = d.maaned, tak = m.tak_idag;
+  if (d.time) {
+    $("time").innerHTML = `${nf(d.time.hittil, 2)} <small>kWh hittil</small>`;
+    $("time-sub").textContent = `Prognose ${nf(d.time.prognose, 2)} kWh for timen (${Math.round(d.time.rest_min)} min igjen)`;
+    if (tak) {
+      const maks = Math.max(tak.sikkert * 1.1, d.time.prognose);
+      $("time-bar").querySelector("span").style.width = Math.min(100, d.time.prognose / maks * 100) + "%";
+      $("time-bar").querySelector("span").style.background = d.time.prognose > tak.sikkert ? "var(--serious)" : "var(--s1)";
+      $("time-bar").querySelector("i").style.left = (tak.sikkert / maks * 100) + "%";
+      $("time-bar-txt").textContent = `Strek: ${nf(tak.sikkert, 0)} kWh, grensen for trinn ${m.trinn.nr}`;
+    }
+  }
+
+  const tr = m.trinn;
+  $("trinn").innerHTML = `Trinn ${tr.nr} <small>${tr.kr} kr/mnd</small>`;
+  $("trinn-sub").textContent = `Snitt av tre høyeste døgnmaks: ${nf(m.snitt, 2)} kW (${tr.fra}–${tr.til ?? "∞"} kW)`;
+  if (tr.til) {
+    $("trinn-bar").querySelector("span").style.width = Math.min(100, (m.snitt - tr.fra) / (tr.til - tr.fra) * 100) + "%";
+    $("trinn-bar-txt").textContent = `${nf(tr.til - m.snitt, 2)} kW til trinn ${tr.nr + 1}` + (m.dager < 3 ? " · få dager med data ennå" : "");
+  }
+
+  // 48 timer
+  const timer = d.timer.map((r, i) => ({ ...r, etikett: i % 3 === 0 ? r.time : "", markert: i === d.timer.length - 1,
+    grunn: r.hus == null ? null : Math.max(0, r.hus - (r.lader || 0)) }));
+  soyler($("chart-timer"), timer, {
+    serier: [{ v: r => r.grunn, farge: "var(--s1)", opacity: r => r.kilde === "prognose" ? 0.55 : 1 },
+             { v: r => r.lader, farge: "var(--s2)" }],
+    band: r => r.lavtariff, ref: tak ? tak.sikkert : null, enhet: "kWh", ymaksMin: 1,
+    tipHtml: r => `<b>${new Date(r.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</b><br>` +
+      `Totalt ${nf(r.hus, 2)} kWh${r.kilde ? ` <span class="muted">(${KILDE[r.kilde] || r.kilde})</span>` : ""}<br>` +
+      `Elbil ${nf(r.lader || 0, 2)} kWh · huset ellers ${nf(r.grunn, 2)} kWh<br>${r.lavtariff ? "Natt/helg-tariff" : "Dagtariff"}` });
+  $("tab-timer").innerHTML = tabell([
+    { t: "Time", v: r => new Date(r.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit" }) },
+    { t: "Totalt kWh", n: 1, v: r => nf(r.hus, 2) }, { t: "Elbil kWh", n: 1, v: r => nf(r.lader, 2) },
+    { t: "Kilde", v: r => KILDE[r.kilde] || "" }], [...d.timer].reverse());
+
+  // Priser
+  const naaTs = Date.now() / 1000;
+  const pr = d.priser.map((p, i) => ({ ...p, etikett: i % 3 === 0 ? p.time : "", markert: p.start <= naaTs && naaTs < p.start + 3600 }));
+  if (pr.length) soyler($("chart-pris"), pr, {
+    serier: [{ v: p => p.spot, farge: "var(--s1)", opacity: p => p.start + 3600 < naaTs ? 0.45 : 1 }],
+    band: p => p.lavtariff, ymaksMin: 0.1,
+    tipHtml: p => `<b>${new Date(p.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</b><br>` +
+      `Spot ${nf(p.spot * 100, 1)} øre (eks. mva)<br>Nettleie ${nf(p.energiledd * 100, 1)} øre · du betaler ${nf(p.din_pris * 100, 1)} øre` });
+  else $("chart-pris").innerHTML = `<p class="muted">Ingen priser ennå.</p>`;
+  $("tab-pris").innerHTML = tabell([
+    { t: "Time", v: p => new Date(p.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit" }) },
+    { t: "Spot øre", n: 1, v: p => nf(p.spot * 100, 1) }, { t: "Nettleie øre", n: 1, v: p => nf(p.energiledd * 100, 1) },
+    { t: "Du betaler øre", n: 1, v: p => nf(p.din_pris * 100, 1) }], d.priser);
+
+  // Måned
+  const topp = new Set(m.topp3.map(x => x.dato));
+  $("maaned").innerHTML = (tak ? `<p style="margin:0 0 8px">Tak for timeforbruk i dag: <b>${nf(tak.sikkert, 1)} kWh</b> (sikkert)` +
+      (tak.gitt_toppene > tak.sikkert ? `, opptil ${nf(tak.gitt_toppene, 1)} kWh gitt toppene så langt` : "") + `.</p>` : "") +
+    tabell([{ t: "Dato", v: x => (topp.has(x.dato) ? "<b>" : "") + new Date(x.dato).toLocaleDateString("nb-NO", { weekday: "short", day: "numeric", month: "short" }) + (topp.has(x.dato) ? "</b>" : "") },
+            { t: "Kl.", n: 1, v: x => String(x.time).padStart(2, "0") },
+            { t: "kWh", n: 1, v: x => (topp.has(x.dato) ? "<b>" : "") + nf(x.kwh, 2) + (topp.has(x.dato) ? "</b>" : "") },
+            { t: "Kilde", v: x => `<span class="muted">${KILDE[x.kilde] || ""}</span>` }],
+           [...m.dognmaks].reverse()) + `<p class="muted" style="margin:6px 0 0">Uthevet = de tre som teller.</p>`;
+
+  // Lader
+  const ins = d.installasjon || {};
+  let lh = l ? tabell([{ t: "", v: r => r[0] }, { t: "", v: r => r[1] }], [
+    ["Status", esc(l.modus_tekst) + (l.final_stop ? " (pauset)" : "")],
+    ["Tilkoblet nett", l.online ? "Ja" : `<span class="err">Nei</span>`],
+    ["Effekt", `${nf(l.effekt_w / 1000, 2)} kW`],
+    ["Strøm satt", l.strom_satt == null ? "–" : `${nf(l.strom_satt, 0)} A (min ${nf(l.min_strom, 0)}, maks ${nf(l.maks_strom, 0)})`],
+    ["Denne økta", l.okt_kwh == null ? "–" : `${nf(l.okt_kwh, 2)} kWh`],
+    ["Lademodus", ins.modus === 0 ? "Standard" : ins.modus === 1 ? "Planlagt" : ins.modus === 2 ? "APM" : "–"],
+  ]).replace(/<tr><th[^]*?<\/tr>/, "") : `<p class="muted">Ingen data ennå.</p>`;
+  if ((ins.funksjoner || []).length) lh += `<div class="warn">Aktivt i Zaptec: ${esc(ins.funksjoner.join(", "))}. Må slås av før styringen tar over.</div>`;
+  $("lader-detaljer").innerHTML = lh;
+
+  // Faser
+  if (n) {
+    const g = d.sikring.hovedsikring_a;
+    $("faser").innerHTML = [["L1", n.i1], ["L3", n.i3]].map(([nav, a]) =>
+      `<div style="margin-bottom:8px"><div class="label">${nav}: <b style="color:var(--ink)">${nf(a, 1)} A</b> av ${g} A</div>` +
+      `<div class="bar"><span style="width:${Math.min(100, (a || 0) / g * 100)}%;background:${a > d.sikring.varsel_a ? "var(--crit)" : "var(--s1)"}"></span></div></div>`).join("") +
+      `<p class="muted" style="margin:0">Måleren i IT-nett måler ikke L2. Spenning: ${(n.u || []).map(v => nf(v, 0)).join(" / ")} V.</p>`;
+  }
+
+  tegnStyring(d.styring);
+
+  // Kilder
+  const NAVN = { tibber: "Tibber Pulse", zaptec: "Zaptec", priser: "Spotpriser", elvia: "Elvia" };
+  $("kilder").innerHTML = tabell([
+    { t: "Kilde", v: ([k, v]) => `<span style="display:inline-flex;align-items:center;gap:6px"><i class="dot" style="background:${v.feil ? "var(--crit)" : v.sist_ok ? "var(--good)" : "var(--muted)"}"></i>${NAVN[k]}</span>` },
+    { t: "Sist OK", v: ([k, v]) => siden(v.sist_ok) + (v.info ? `<br><span class="muted">${esc(v.info)}</span>` : "") + (v.feil ? `<br><span class="err">${esc(v.feil)}</span>` : "") }],
+    Object.entries(d.kilder));
+}
+
+// Styring
+const OVERSTYRING = { lad_naa: "Lad nå", pause: "Ikke lad i natt", timer: "Egendefinert antall timer" };
+const klokke = ts => new Date(ts * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+function tegnStyring(st) {
+  if (!st) return;
+  const m = { dryrun: ["Prøvemodus: sender ingen kommandoer", "var(--warn)"], aktiv: ["Aktiv", "var(--good)"], av: ["Av", "var(--muted)"] }[st.modus] || [st.modus, "var(--muted)"];
+  $("st-modus").innerHTML = `<i class="dot" style="background:${m[1]}"></i> ${esc(m[0])}`;
+  $("st-handling").textContent = st.handling ? st.handling[0].toUpperCase() + st.handling.slice(1) : "–";
+  $("st-grunn").textContent = [st.lade ? `Ønsket strøm ${st.strom} A` : "", st.grunn, st.feil ? `Feil: ${st.feil}` : ""].filter(Boolean).join(" · ");
+  $("st-advarsler").innerHTML = (st.advarsler || []).map(a => `<div class="warn">${esc(a)}</div>`).join("");
+  const p = st.plan;
+  if (p) {
+    $("st-plan-tittel").textContent = `Plan til avreise ${klokke(p.avreise)}: ${p.antall} ladetimer` +
+      (p.brukt ? `, ${p.brukt} ladet` : "") + (p.mangler_spot ? ` (spotpris mangler for ${p.mangler_spot} timer ennå)` : "");
+    const naaTs = Date.now() / 1000;
+    $("st-timer").innerHTML = p.timer.map(x => {
+      const kl = new Date(x.start * 1000).getHours();
+      const cls = [x.valgt ? "valgt" : "", x.lavtariff ? "lav" : "", x.forbi ? "forbi" : "", x.ladet_kwh >= 0.1 ? "ladet" : "",
+                   x.start <= naaTs && naaTs < x.start + 3600 ? "naa" : ""].join(" ");
+      const tittel = `kl. ${String(kl).padStart(2, "0")}: nettleie ${nf(x.energiledd * 100, 1)} øre, spot ${x.spot == null ? "ukjent" : nf(x.spot * 100, 0) + " øre"}` +
+        (x.ladet_kwh ? `, ladet ${nf(x.ladet_kwh, 1)} kWh` : "") + (x.valgt ? " (planlagt)" : "");
+      return `<div class="${cls}" title="${tittel}"><div class="blokk"></div>${String(kl).padStart(2, "0")}</div>`;
+    }).join("");
+  }
+  const o = st.overstyring;
+  document.querySelectorAll("#st-knapper button").forEach(b => b.classList.toggle("valgt",
+    o ? b.dataset.type === o.type : b.dataset.type === "auto"));
+  const inp = $("st-antall");
+  if (document.activeElement !== inp) inp.value = p ? p.antall : "";
+  $("st-overstyring").textContent = o ? `${OVERSTYRING[o.type] || o.type}${o.type === "timer" ? ` (${o.timer})` : ""} gjelder til ${klokke(o.til)}.` : "Automatisk: de gunstigste timene før avreise.";
+  if (st.tak && st.tak.kwh != null) $("st-overstyring").textContent += ` Timetak ${nf(st.tak.kwh, 1)} kWh (${st.tak.kilde}).`;
+  $("st-logg").innerHTML = (st.logg || []).length ? tabell([
+    { t: "Tid", v: r => klokke(r.ts) },
+    { t: "Handling", v: r => esc(r.handling) + (r.detaljer.strom ? ` ${r.detaljer.strom} A` : "") },
+    { t: "Grunn", v: r => `<span class="muted">${esc(r.detaljer.grunn || "")}</span>` },
+    { t: "Utført", v: r => r.feil ? `<span class="err">${esc(r.feil)}</span>` : r.utfort ? "Ja" : "Nei (prøvemodus)" }], st.logg)
+    : `<p class="muted">Ingen beslutninger ennå.</p>`;
+}
+
+async function overstyr(type) {
+  const body = { type };
+  if (type === "timer") body.timer = +$("st-antall").value;
+  try {
+    const r = await fetch("api/overstyring", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json()).feil || "HTTP " + r.status);
+    setTimeout(oppdater, 1500);
+  } catch (e) { $("st-overstyring").innerHTML = `<span class="err">Klarte ikke å lagre: ${esc(e.message)}</span>`; }
+}
+document.querySelectorAll("#st-knapper button").forEach(b => b.addEventListener("click", () => overstyr(b.dataset.type)));
+
+// Strømregning
+const kr = x => x == null ? "–" : `${nf(x, 0)} kr`;
+const mndNavn = (m, lang = false) => new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1)
+  .toLocaleDateString("nb-NO", lang ? { month: "long", year: "numeric" } : { month: "short" }).replace(".", "");
+const stotteTekst = r => Math.abs(r.stotte) < 0.5 ? "0 kr" : r.stotte > 0 ? `−${kr(r.stotte)}` : `+${kr(-r.stotte)}`;
+const ORD = { norgespris: "Norgespris", stromstotte: "Strømstønad", ingen: "Ingen støtte" };
+const datoTekst = s => new Date(s).toLocaleDateString("nb-NO", { day: "numeric", month: "short", year: "numeric" });
+function ordningTekst(o, mva) {
+  if (o.ordning === "norgespris") return `fast ${nf(o.pris * 100, 0)} øre/kWh: staten dekker spot over, du betaler opp når spot er under`;
+  if (o.ordning === "stromstotte") return `${nf(o.grad * 100, 0)} % av spot over ${nf(o.terskel * 100, 2)} øre eks. mva`;
+  return "ingen støtte";
+}
+function tegnRegning(d) {
+  const i = d.inneverende, h = i.hittil, p = i.prognose, f = d.forutsetninger;
+  const o = f.ordning;
+  $("regning-tittel").textContent = `Strømregning for ${mndNavn(i.maaned, true)}`;
+  $("regning-hittil").innerHTML = `${nf(h.sum, 0)} <small>kr</small>`;
+  $("regning-hittil-sub").textContent = `${nf(h.kwh, 0)} kWh · ${nf(h.ore_per_kwh, 0)} øre/kWh i snitt`;
+  $("regning-prognose").innerHTML = `${nf(p.sum, 0)} <small>kr</small>`;
+  $("regning-prognose-sub").textContent = `ca. ${nf(p.kwh, 0)} kWh · kapasitetstrinn ${p.trinn}`;
+  const rader = [
+    ["Strøm", `spotpris${f.mva ? " inkl. mva" : ""}, påslag ${nf(f.avtale.paaslag * 100, 1)} øre/kWh`, r => kr(r.kraft)],
+    [ORD[o.ordning] || o.ordning, ordningTekst(o, f.mva), r => stotteTekst(r)],
+    ["Nettleie, energiledd", "dag og natt/helg", r => kr(r.energiledd)],
+    ["Nettleie, kapasitetsledd", `trinn ${h.trinn} hittil (forholdsmessig), trinn ${p.trinn} i prognosen`, r => kr(r.kapasitet)],
+    ...(h.fastbelop || p.fastbelop ? [["Fastbeløp strømavtale", "", r => kr(r.fastbelop)]] : []),
+  ];
+  $("regning-fordeling").innerHTML = `<table><tr><th></th><th class="n">Hittil</th><th class="n">Prognose</th></tr>` +
+    rader.map(([t, fk, v]) => `<tr><td>${t}<span class="forkl">${fk}</span></td><td class="n">${v(h)}</td><td class="n">${v(p)}</td></tr>`).join("") +
+    `<tr class="sum"><td>Sum</td><td class="n">${kr(h.sum)}</td><td class="n">${kr(p.sum)}</td></tr></table>`;
+
+  const alle = [...d.historikk, { ...p, maaned: i.maaned, ordning: i.ordning, prognose: true }];
+  const smal = $("chart-regning").clientWidth < 560;
+  const mnd = alle.map((r, k) => ({ ...r, netto: r.kraft_netto + r.fastbelop,
+    etikett: !smal || k % 2 === alle.length % 2 ? mndNavn(r.maaned) : "" }));
+  const op = r => r.prognose ? 0.55 : 1;
+  soyler($("chart-regning"), mnd, {
+    serier: [{ v: r => r.netto, farge: "var(--s1)", opacity: op }, { v: r => r.energiledd, farge: "var(--s2)", opacity: op },
+             { v: r => r.kapasitet, farge: "var(--s3)", opacity: op }],
+    ymaksMin: 100,
+    tipHtml: r => `<b>${mndNavn(r.maaned, true)}${r.prognose ? " (prognose)" : ""}</b><br>Sum ${kr(r.sum)} · ${nf(r.kwh, 0)} kWh · ${nf(r.ore_per_kwh, 0)} øre/kWh<br>` +
+      `Strøm ${kr(r.kraft)}, ${(ORD[r.ordning] || r.ordning).toLowerCase().replace("norgespris", "Norgespris")} ${stotteTekst(r)}<br>` +
+      `Nettleie ${kr(r.nettleie)} (energiledd ${kr(r.energiledd)}, trinn ${r.trinn} ${kr(r.kapasitet)})` });
+  $("tab-regning").innerHTML = tabell([
+    { t: "Måned", v: r => mndNavn(r.maaned, true) + (r.prognose ? " <span class=\"muted\">(prognose)</span>" : "") },
+    { t: "kWh", n: 1, v: r => nf(r.kwh, 0) }, { t: "Strøm", n: 1, v: r => kr(r.kraft) },
+    { t: "Støtte", n: 1, v: r => stotteTekst(r) }, { t: "Nettleie", n: 1, v: r => kr(r.nettleie) },
+    ...(alle.some(r => r.fastbelop) ? [{ t: "Fastbeløp", n: 1, v: r => kr(r.fastbelop) }] : []),
+    { t: "Sum", n: 1, v: r => `<b>${kr(r.sum)}</b>` }, { t: "øre/kWh", n: 1, v: r => nf(r.ore_per_kwh, 0) },
+    { t: "Trinn", n: 1, v: r => r.trinn }], [...mnd].reverse());
+
+  const note = [];
+  note.push("Støtte: " + f.ordninger.map(x => `${ORD[x.ordning] || x.ordning} fra ${datoTekst(x.fra)}`).join(", ") + ".");
+  note.push(`Prognosen bruker forbruksprofilen de siste ${f.profil_dager} dagene.`);
+  const usp = alle.reduce((a, r) => a + (r.prognose ? 0 : r.uten_spot), 0) + h.uten_spot;
+  if (usp) note.push(`${usp} timer mangler spotpris, så fordelingen strøm/støtte er usikker der (med Norgespris er totalen likevel riktig).`);
+  $("regning-note").textContent = note.join(" ");
+  tegnElbil(d.elbil);
+}
+
+function tegnElbil(e) {
+  if (!e || !e.totalt) { $("elbil-sum").textContent = "–"; $("elbil-sub").textContent = "Ingen lading registrert ennå."; return; }
+  const t = e.totalt, fraDato = new Date(e.fra * 1000).toLocaleDateString("nb-NO", { day: "numeric", month: "long" });
+  $("elbil-sum").innerHTML = `${nf(t.sum + e.kapasitet_ekstra, 0)} <small>kr siden ${fraDato}</small>`;
+  $("elbil-sub").textContent = `${nf(t.kwh, 1)} kWh · ${nf(t.ore_per_kwh, 0)} øre/kWh i snitt · ${nf(t.andel_natt * 100, 0)} % på natt/helg-tariff`;
+  const m = e.maaneder[e.maaneder.length - 1];
+  $("elbil-kap").innerHTML = m.ekstra_kr > 0
+    ? `Kapasitetsledd: ladingen løfter ${mndNavn(m.maaned, true)} fra trinn ${m.trinn_uten} til ${m.trinn_med}, <b>${kr(m.ekstra_kr)}</b> ekstra.`
+    : `Kapasitetsledd: ladingen har ikke løftet ${mndNavn(m.maaned, true)} opp et trinn (trinn ${m.trinn_med}).`;
+  if (m.delvis) $("elbil-kap").innerHTML += ` <span class="muted">Lading før ${fraDato} er ikke skilt ut.</span>`;
+  const tid = ts => new Date(ts * 1000).toLocaleString("nb-NO", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  $("elbil-okter").innerHTML = tabell([
+    { t: "Lading", v: o => `${tid(o.start)} – ${new Date(o.slutt * 1000).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}` +
+        (o.pagar ? ` <span class="muted">(pågår)</span>` : "") },
+    { t: "kWh", n: 1, v: o => nf(o.kwh, 1) }, { t: "Kostnad", n: 1, v: o => kr(o.sum) },
+    { t: "øre/kWh", n: 1, v: o => nf(o.ore_per_kwh, 0) }, { t: "Natt/helg", n: 1, v: o => `${nf(o.andel_natt * 100, 0)} %` }],
+    e.okter.slice(0, 15));
+}
+
+// Strømavtale og støtte: redigeres lokalt og lagres med «Lagre».
+let innst = null, endret = false;
+const STD = { norgespris: { pris: 0.5 }, stromstotte: { terskel: 0.75, grad: 0.9 }, ingen: {} };
+const iDag = () => new Date().toLocaleDateString("sv-SE");  // ÅÅÅÅ-MM-DD i lokal tid
+const tilOre = v => v == null || Number.isNaN(v) ? "" : +(v * 100).toFixed(4);
+function tegnInnst() {
+  const idag = iDag();
+  const naaA = innst.avtaler.filter(x => x.fra <= idag).at(-1) || innst.avtaler[0];
+  const naaO = innst.ordninger.filter(x => x.fra <= idag).at(-1) || innst.ordninger[0];
+  $("innst-naa").textContent = `Nå: ${ORD[naaO.ordning]}${naaO.ordning === "norgespris" ? ` ${nf(naaO.pris * 100, 0)} øre/kWh` : ""} · ` +
+    `påslag ${nf(naaA.paaslag * 100, 1)} øre/kWh, fastbeløp ${nf(naaA.fastbelop, 0)} kr/mnd${naaA.navn ? ` (${naaA.navn})` : ""}. ` +
+    (innst.kilde === "web" ? "Lagret her på siden." : "Fra config.toml.");
+  const fjern = l => `<td><button type="button" data-fjern ${innst[l].length < 2 ? "disabled" : ""}>Fjern</button></td>`;
+  $("in-ordninger").innerHTML = `<table class="rediger"><tr><th>Fra og med</th><th>Ordning</th><th>Satser</th><th></th></tr>` +
+    innst.ordninger.map((p, i) => `<tr data-l="ordninger" data-i="${i}">
+      <td><input type="date" data-f="fra" value="${esc(p.fra)}" aria-label="Fra og med"></td>
+      <td><select data-f="ordning" aria-label="Ordning">${Object.entries(ORD).map(([k, v]) => `<option value="${k}"${k === p.ordning ? " selected" : ""}>${v}</option>`).join("")}</select></td>
+      <td>${p.ordning === "norgespris"
+        ? `<label><input type="number" class="bred" step="0.01" data-f="pris" data-ore value="${tilOre(p.pris)}" aria-label="Norgespris"> øre/kWh${innst.mva ? " inkl. mva" : ""}</label>`
+        : p.ordning === "stromstotte"
+        ? `<label>over <input type="number" class="bred" step="0.01" data-f="terskel" data-ore value="${tilOre(p.terskel)}" aria-label="Terskel"> øre/kWh eks. mva</label>` +
+          `<label>dekker <input type="number" step="1" min="0" max="100" data-f="grad" data-ore value="${tilOre(p.grad)}" aria-label="Dekningsgrad"> %</label>`
+        : `<span class="muted">–</span>`}</td>${fjern("ordninger")}</tr>`).join("") + "</table>";
+  $("in-avtaler").innerHTML = `<table class="rediger"><tr><th>Fra og med</th><th>Påslag</th><th>Fastbeløp</th><th>Merknad</th><th></th></tr>` +
+    innst.avtaler.map((p, i) => `<tr data-l="avtaler" data-i="${i}">
+      <td><input type="date" data-f="fra" value="${esc(p.fra)}" aria-label="Fra og med"></td>
+      <td><label><input type="number" class="bred" step="0.01" data-f="paaslag" data-ore value="${tilOre(p.paaslag)}" aria-label="Påslag"> øre/kWh</label></td>
+      <td><label><input type="number" class="bred" step="1" min="0" data-f="fastbelop" value="${p.fastbelop ?? ""}" aria-label="Fastbeløp"> kr/mnd</label></td>
+      <td><input type="text" data-f="navn" maxlength="80" value="${esc(p.navn || "")}" placeholder="f.eks. leverandør" aria-label="Merknad"></td>
+      ${fjern("avtaler")}</tr>`).join("") + "</table>";
+}
+function innstStatus(html, cls = "sub") { $("in-status").className = cls; $("in-status").innerHTML = html; }
+function merkEndret() { endret = true; innstStatus("Ulagrede endringer."); }
+async function hentInnst() {
+  try {
+    const r = await fetch("api/innstillinger", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    innst = await r.json(); endret = false; tegnInnst(); innstStatus("");
+  } catch (e) { $("innst-naa").innerHTML = `<span class="err">Klarte ikke å hente innstillingene (${esc(e.message)})</span>`; }
+}
+async function lagreInnst(body) {
+  innstStatus("Lagrer …");
+  try {
+    const r = await fetch("api/innstillinger", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.feil || "HTTP " + r.status);
+    innst = d; endret = false; tegnInnst();
+    innstStatus("Lagret. Regningen er regnet om.", "status-ok");
+    oppdaterRegning(); oppdater();
+  } catch (e) { innstStatus(`Ble ikke lagret: ${esc(e.message)}`, "err"); }
+}
+const innstEl = $("innst");
+function lesFelt(e) {
+  const el = e.target, tr = el.closest("tr[data-l]");
+  if (!tr || !el.dataset.f) return;
+  const rad = innst[tr.dataset.l][+tr.dataset.i], f = el.dataset.f;
+  if (el.type === "number") rad[f] = el.value === "" ? null : el.hasAttribute("data-ore") ? Math.round(+el.value * 1e4) / 1e6 : +el.value;
+  else rad[f] = el.value;
+  if (f === "ordning") { Object.keys(rad).forEach(k => k !== "fra" && k !== "ordning" && delete rad[k]); Object.assign(rad, STD[rad.ordning]); tegnInnst(); }
+  merkEndret();
+}
+innstEl.addEventListener("input", e => e.target.tagName !== "SELECT" && lesFelt(e));
+innstEl.addEventListener("change", e => e.target.tagName === "SELECT" && lesFelt(e));
+innstEl.addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b || !innst) return;
+  if (b.hasAttribute("data-fjern")) {
+    const tr = b.closest("tr[data-l]"); innst[tr.dataset.l].splice(+tr.dataset.i, 1); tegnInnst(); merkEndret();
+  } else if (b.dataset.legg) {
+    const l = innst[b.dataset.legg], siste = l.at(-1) || {};
+    l.push({ ...siste, fra: iDag(), ...(b.dataset.legg === "avtaler" ? { navn: "" } : {}) });
+    tegnInnst(); merkEndret();
+  } else if (b.id === "in-lagre") lagreInnst({ avtaler: innst.avtaler, ordninger: innst.ordninger });
+  else if (b.id === "in-angre") hentInnst();
+  else if (b.id === "in-tilbake" && confirm("Slette strømavtale og støtte lagret her og bruke verdiene i config.toml?")) lagreInnst({ tilbakestill: true });
+});
+addEventListener("beforeunload", e => { if (endret) e.preventDefault(); });
+hentInnst();
+
+let sistRegning = null;
+async function oppdaterRegning() {
+  try {
+    const r = await fetch("api/regning", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    sistRegning = await r.json(); tegnRegning(sistRegning);
+  } catch (e) { $("regning-note").innerHTML = `<span class="err">Klarte ikke å hente regningen (${esc(e.message)})</span>`; }
+}
+
+async function oppdater() {
+  try {
+    const r = await fetch("api/status", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    tegn(await r.json());
+  } catch (e) { $("tid").innerHTML = `<span class="err">Får ikke kontakt med tjenesten (${esc(e.message)})</span>`; }
+}
+oppdater();
+setInterval(oppdater, 10000);
+oppdaterRegning();
+setInterval(oppdaterRegning, 60000);
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { sist && tegn(sist); sistRegning && tegnRegning(sistRegning); }, 150); });
+</script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+# Standardinnstillinger for lading-tjenesten.
+#
+# Hemmeligheter og ID-er for din installasjon hører hjemme i .env (se .env.example), ikke her.
+# Enhver enkeltverdi under kan overstyres i .env med LADING_<SEKSJON>_<NØKKEL>,
+# f.eks. LADING_STYRING_MODUS=aktiv. Tabeller (tariffperioder, trinn) endres her.
+# Strømavtale og støtteordning kan i tillegg endres på websiden; det som lagres der, gjelder.
+
+[tibber]
+home_id = ""               # settes i .env: LADING_TIBBER_HOME_ID (finn den med python -m lading.finn)
+
+[zaptec]
+installation_id = ""       # settes i .env: LADING_ZAPTEC_INSTALLATION_ID
+charger_id = ""            # settes i .env: LADING_ZAPTEC_CHARGER_ID
+poll_sekunder = 60
+
+[priser]
+omraade = "NO1"
+historikk_fra = "2025-08-01"   # spotpriser hentes bakover hit (tom = ingen historikk)
+
+[elvia]
+fra = "2025-08-01"         # start på kundeforholdet / historikken
+hent_kl = 10               # daglig henting av gårsdagens timeverdier
+backfill_pause_min = 5     # pause mellom kall under historikk-henting (kvote)
+
+[sikring]
+hovedsikring_a = 50
+varsel_a = 45              # fasestrøm som regnes som for høy
+
+# Elvia standard nettleie for forbrukerkunder (inkl. avgifter og mva), med historikk for regningsberegning.
+# Kilde: Elvias tariffblad 1.0. En periode uten «trinn» arver trinnene fra perioden før.
+[tariff]
+dag_fra = 6                # hverdager 06–22 = dag; natt, helg og helligdager er lavtariff
+dag_til = 22
+
+[[tariff.perioder]]
+fra = "2025-04-01"         # elavgift 16,93 øre
+energiledd_dag = 0.4865    # kr/kWh
+energiledd_natt = 0.3865
+# Kapasitetstrinn: snitt av de tre høyeste døgnmaksene i måneden (kWh i én klokketime).
+trinn = [
+  { til = 2,   kr = 125 },
+  { til = 5,   kr = 190 },
+  { til = 10,  kr = 300 },
+  { til = 15,  kr = 410 },
+  { til = 20,  kr = 520 },
+  { til = 25,  kr = 630 },
+  { til = 50,  kr = 1175 },
+  { til = 75,  kr = 1720 },
+  { til = 100, kr = 2270 },
+  { til = inf, kr = 4570 },
+]
+
+[[tariff.perioder]]
+fra = "2025-10-01"         # elavgift ned til 12,53 øre
+energiledd_dag = 0.4315
+energiledd_natt = 0.3315
+
+[[tariff.perioder]]
+fra = "2026-01-01"         # elavgift 7,13 øre
+energiledd_dag = 0.3640
+energiledd_natt = 0.2640
+
+[[tariff.perioder]]
+fra = "2026-07-01"
+energiledd_dag = 0.4640
+energiledd_natt = 0.3140
+trinn = [
+  { til = 2,   kr = 150 },
+  { til = 5,   kr = 250 },
+  { til = 10,  kr = 420 },
+  { til = 15,  kr = 585 },
+  { til = 20,  kr = 755 },
+  { til = 25,  kr = 925 },
+  { til = 50,  kr = 1760 },
+  { til = 75,  kr = 2600 },
+  { til = 100, kr = 3440 },
+  { til = inf, kr = 6800 },
+]
+
+# Strømregning. Kraften koster spot + mva + påslag; staten justerer via nettleien med Norgespris
+# (fast pris, staten dekker eller krever differansen) eller strømstønad (dekker en andel over en terskel).
+[regning]
+mva = 0.25                 # 0 der strøm er fritatt for mva (Nord-Norge)
+stotte_maks_kwh = 5000     # per måned, både Norgespris og strømstønad
+
+# Støtteordning per periode, fra og med «fra». Kan endres på websiden (Strømavtale og støtte).
+# ordning = "norgespris" (pris i kr/kWh inkl. mva), "stromstotte" (terskel i kr/kWh eks. mva og
+# grad = andel staten dekker over terskelen) eller "ingen".
+[[regning.ordninger]]
+fra = "2025-01-01"
+ordning = "stromstotte"
+terskel = 0.75
+grad = 0.90
+
+# [[regning.ordninger]]
+# fra = "2025-10-01"
+# ordning = "norgespris"
+# pris = 0.50              # 0.40 der strøm er fritatt for mva
+
+# Strømavtalen: påslag i kr/kWh og fastbeløp i kr/mnd, begge inkl. mva, slik de står på fakturaen.
+# Kan endres på websiden.
+[[regning.avtaler]]
+fra = "2025-01-01"
+paaslag = 0.0
+fastbelop = 0
+
+# Styring av ladingen. modus: "av", "dryrun" (regner og logger, sender ingenting) eller "aktiv".
+# Start med dryrun og følg med på «Siste beslutninger» på websiden før du slår på aktiv.
+[styring]
+modus = "dryrun"
+timer_per_dogn = 6         # antatt ladebehov til vi har batterinivå fra bilen
+avreise = "07:00"          # ladingen planlegges fra vindu_fra dagen før til avreise
+vindu_fra = 12
+ladetime_min_kwh = 1.0     # en time teller som ladet når laderen har levert minst dette
+maks_blokker = 2           # flere separate ladeblokker enn dette gir sammenhengende plan (få stopp)
+margin_kwh = 0.3           # hold timeforbruket så mye under grensen for kapasitetstrinnet
+tak_tidlig_dager = 10      # før så mange dager i måneden brukes forrige måneds trinn som gulv for taket
+volt = 230                 # bilen lader enfaset: effekt ≈ ampere × volt
+min_strom = 6
+maks_strom = 30
+trygg_strom = 10           # brukes når Pulse-data mangler
+strom_opp_min = 15         # minst så lenge mellom økninger av strømmen (Zaptecs råd)
+strom_ned_min = 5          # minst så lenge mellom reduksjoner (unntatt fasevakt)
+pause_min = 10             # minst så lenge mellom pause og gjenoppta
+maks_stopp = 4             # pauser per tilkobling (laderen tillater 5)
+lad_naa_timer = 12         # «lad nå» varer så lenge, eller til bilen kobles fra
+
+[web]
+host = "127.0.0.1"
+port = 8093
+
+[db]
+sti = "data/lading.db"

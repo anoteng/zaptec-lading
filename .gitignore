@@ -1,0 +1,8 @@
+.env
+__pycache__/
+.venv/
+CLAUDE.md
+data/
+# Lokale notater og driftsoppsett, publiseres ikke
+PLAN.md
+drift/
