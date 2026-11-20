@@ -58,3 +58,24 @@ async def send(tittel: str, tekst: str, prioritet: str = "default", tagger: str 
         await asyncio.wait_for(p.wait(), 60)
     except Exception as e:
         log.warning("varsel feilet: %s", e)
+
+
+async def _test():
+    """Sender et testvarsel og sier tydelig fra om det feiler (python -m lading.varsel)."""
+    from . import config
+    cfg = config.last(krev=False)
+    async with aiohttp.ClientSession(headers={"User-Agent": "lading/0.1"}) as http:
+        oppsett(cfg, http)
+        tittel, tekst = "Lading: testvarsel", "Varsler fra ladeappen kommer fram. Æøå fungerer."
+        if _oppsett["url"]:
+            await _ntfy(tittel, tekst, "default", "white_check_mark")
+            print("Sendt til", _oppsett["url"].split("://", 1)[-1].split("/", 1)[0], "– sjekk ntfy-appen.")
+        elif shutil.which(SKRIPT):
+            await send(tittel, tekst, "default", "white_check_mark")
+            print(f"Sendt via {SKRIPT}.")
+        else:
+            print("Ingen varselkanal: sett NTFY_URL i .env (se .env.example).")
+
+
+if __name__ == "__main__":
+    asyncio.run(_test())

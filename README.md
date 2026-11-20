@@ -89,6 +89,8 @@ Kommandoen skriver ut ferdige linjer: `LADING_TIBBER_HOME_ID`, `LADING_ZAPTEC_IN
 `LADING_ZAPTEC_CHARGER_ID`. Velg Tibber-hjemmet med «sanntid: ja» og lim linjene inn i `.env`.
 Har du Elvia, legg også inn `ELVIA_METERVALUES_TOKEN`. Det opprettes på Elvia Min side → Tilganger.
 
+Vil du ha push-varsler på mobilen, sett opp en ntfy-topic nå (se [Varsler](#varsler)).
+
 Sjekk resten av `.env.example`: prisområde, hovedsikring, avreisetid og antall ladetimer.
 Alle standardverdier står der, kommentert ut.
 
@@ -233,11 +235,35 @@ Den viser bare `{"ok": true/false}`.
 
 ## Varsler
 
-Varsler sendes som push via [ntfy](https://ntfy.sh): installer ntfy-appen på mobilen, abonner på et topic, og
-legg adressen i `.env` som `NTFY_URL=https://ntfy.sh/<langt-tilfeldig-navn>`. Alle som kjenner topic-navnet,
-kan lese varslene, så bruk et langt, tilfeldig navn, eller en egen ntfy-server med `NTFY_TOKEN`.
-Uten `NTFY_URL` brukes kommandoen `/usr/local/bin/varsle "Tittel" "Melding" [prioritet] [tagger]` hvis den finnes,
-ellers havner varslene bare i loggen.
+Varsler sendes som push via [ntfy](https://ntfy.sh). Det er gratis og krever ingen konto.
+
+1. Lag et langt, tilfeldig topic-navn. På ntfy.sh kan alle som kjenner navnet, lese varslene, så det må ikke
+   kunne gjettes:
+
+   ```sh
+   python3 -c "import secrets; print('lading-' + secrets.token_hex(12))"
+   ```
+
+2. Installer ntfy-appen (Android/iOS) og abonner på topic-navnet på serveren `ntfy.sh`.
+3. Legg adressen i `.env`:
+
+   ```sh
+   NTFY_URL=https://ntfy.sh/lading-…
+   ```
+
+4. Send et testvarsel, og start tjenesten på nytt så den tar i bruk adressen:
+
+   ```sh
+   .venv/bin/python -m lading.varsel
+   systemctl --user restart lading
+   ```
+
+**Egen ntfy-server:** bruk dens adresse i `NTFY_URL`. Krever topicen innlogging, legges et tilgangstoken (`tk_…`)
+i `NTFY_TOKEN`.
+
+Hold gjerne varslene fra lading på en egen topic, skilt fra annen serverovervåking. Da blir det tydelig hva som
+krever handling i huset. Uten `NTFY_URL` brukes kommandoen
+`/usr/local/bin/varsle "Tittel" "Melding" [prioritet] [tagger]` hvis den finnes, ellers havner varslene bare i loggen.
 
 | Varsel | Når |
 |---|---|
@@ -332,7 +358,7 @@ lading/
   plan.py       hvilke timer bilen skal lade
   styring.py    effektvakt, fasevakt, overstyring og utførelse
   effektvarsel.py  varsel når timen ligger an til å øke kapasitetstrinnet
-  varsel.py     push-varsler via ntfy
+  varsel.py     push-varsler via ntfy (python -m lading.varsel sender et testvarsel)
   avtale.py     strømavtale og støtteordning
   regning.py    strømregning, prognose og historikk
   elbil.py      hva elbilen koster
