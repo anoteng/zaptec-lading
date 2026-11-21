@@ -6,6 +6,10 @@ Modus i config.toml [styring]:
   aktiv   – sender kommandoer til laderen (pause/gjenoppta og tilgjengelig strøm)
 
 Overstyring fra websiden (lagres i databasen): auto, lad_naa, pause, timer (N timer i dette vinduet).
+
+Bilen full: stopper bilen ladingen selv (eller trekker nesten ingenting over tid) etter å ha ladet i denne
+tilkoblingen, lagres det i databasen. Da lar styringen laderen være (ingen gjenopptak eller pause, bare
+effektvakta begrenser strømmen) til bilen kobles fra, eller «Lad nå»/egendefinert antall timer velges.
 """
 import asyncio
 import datetime as dt
@@ -26,6 +30,11 @@ log = logging.getLogger("lading.styring")
 PAUSE, GJENOPPTA = 506, 507
 TICK = 15
 OVERSTYRINGER = ("auto", "lad_naa", "pause", "timer")
+FERDIG = "bil_ferdig"
+FERDIG_MIN = 10       # bilen har stått stoppet av seg selv så lenge (ikke pauset av oss)
+TRIKLE_MIN = 30       # eller trukket under TRIKLE_KW så lenge, selv om den har fått lade
+TRIKLE_KW = 0.5
+MIN_OKT_KWH = 0.5     # bilen må ha ladet litt i denne tilkoblingen
 
 
 def overstyring(db: DB, naa_ts: float) -> dict | None:
@@ -42,6 +51,9 @@ def sett_overstyring(db: DB, cfg: dict, type_: str, timer: int | None = None) ->
     if type_ == "auto":
         db.lagre("overstyring", None)
         return None
+    if type_ in ("lad_naa", "timer") and db.hent(FERDIG):
+        db.lagre(FERDIG, None)  # brukeren vil lade likevel
+        log.info("«bilen er full» nullstilt: overstyring %s", type_)
     naa_dt = naa()
     _, avreise = plan.vindu(cfg, naa_dt)
     til = avreise.timestamp()
@@ -89,6 +101,7 @@ class Styring:
         self.var_tilkoblet = False
         self.gjenopptak_uten_lading = 0
         self.sist_logget: tuple | None = None
+        self.ferdig_siden: float | None = None   # når bilen sist ble stående stoppet av seg selv
 
     # --- beslutning ---
     def onske(self, naa_ts: float) -> dict:
@@ -99,13 +112,16 @@ class Styring:
         p = plan.lag(self.db, self.cfg, lokal(naa_ts), antall)
         denne = time_av(naa_ts)
         tak = timetak(self.db, self.cfg, t, naa_ts)
-        ut = {"ts": naa_ts, "overstyring": o, "plan": p, "tak": tak, "lade": False, "strom": None, "grunn": ""}
+        ferdig = self.db.hent(FERDIG)
+        ut = {"ts": naa_ts, "overstyring": o, "plan": p, "tak": tak, "lade": False, "strom": None, "grunn": "",
+              "ferdig": ferdig}
 
         if o and o["type"] == "pause":
             ut["grunn"] = "pauset manuelt"
             return ut
         lad_naa = bool(o and o["type"] == "lad_naa")
-        if not lad_naa and denne not in p["valgte"]:
+        ferdig = ferdig if not lad_naa else None
+        if not lad_naa and not ferdig and denne not in p["valgte"]:
             nest = next((s for s in p["valgte"] if s > denne), None)
             ut["grunn"] = f"venter til {lokal(nest):%H:%M}" if nest else "ingen flere ladetimer før avreise"
             return ut
@@ -138,6 +154,11 @@ class Styring:
                 grunn += f"; fasevakt ({fase:.0f} A)"
                 ut["fasevakt"] = True
         strom = min(maks, strom)
+        if ferdig:  # bare et tak i tilfelle bilen trekker strøm (balansering, forvarming)
+            ut.update(strom=max(sc["min_strom"], strom),
+                      grunn=f"bilen ble full {lokal(ferdig['ts']):%d.%m. kl. %H:%M} ({ferdig['grunn']}); "
+                            "lader ikke mer før den kobles fra")
+            return ut
         if strom < sc["min_strom"]:
             ut["grunn"] = f"timetaket er nådd ({grunn})"
             return ut
@@ -164,12 +185,50 @@ class Styring:
         self.db.x("INSERT INTO styring_logg VALUES (?,?,?,?,?)", time.time(), handling,
                   json.dumps(detaljer, ensure_ascii=False), int(self.aktiv and feil is None), feil)
 
+    def _nullstill_ferdig(self, grunn: str):
+        self.db.lagre(FERDIG, None)
+        log.info("«bilen er full» nullstilt: %s", grunn)
+
+    def _sjekk_ferdig(self, naa_ts: float, lader: dict, tilkoblet: bool):
+        """Registrer at bilen er full, og nullstill når den kobles fra (eller en ny økt har startet)."""
+        f = self.db.hent(FERDIG)
+        okt = lader.get("okt_kwh")
+        if f:
+            if not tilkoblet:
+                self._nullstill_ferdig("bilen er koblet fra")
+            elif okt is not None and f.get("okt_kwh") is not None and okt < f["okt_kwh"] - 0.1:
+                self._nullstill_ferdig("ny ladeøkt (koblet fra og til mens tjenesten var nede)")
+            return
+        if not tilkoblet or (okt or 0) < MIN_OKT_KWH or lader.get("final_stop"):
+            self.ferdig_siden = None
+            return
+        grunn = None
+        if lader["modus"] == 5:  # stoppet uten at vi pauset den
+            self.ferdig_siden = self.ferdig_siden or naa_ts
+            if naa_ts - self.ferdig_siden >= FERDIG_MIN * 60:
+                grunn = "bilen stoppet ladingen selv"
+        else:
+            self.ferdig_siden = None
+            if lader["modus"] == 3 and naa_ts - max(self.sist_pause, self.sist_strom) >= TRIKLE_MIN * 60 \
+                    and (lader.get("strom_satt") or 0) >= self.sc["min_strom"]:
+                r = self.db.en("SELECT AVG(effekt_w) e, COUNT(*) n, MIN(modus) a, MAX(modus) b, MAX(final_stop) fs "
+                               "FROM lader WHERE ts >= ?", int(naa_ts - TRIKLE_MIN * 60))
+                if r and r["n"] >= TRIKLE_MIN * 0.8 and r["a"] == r["b"] == 3 and not r["fs"] \
+                        and r["e"] < TRIKLE_KW * 1000:
+                    grunn = f"under {_tall(TRIKLE_KW)} kW i {TRIKLE_MIN} min"
+        if grunn:
+            self.ferdig_siden = None
+            self.db.lagre(FERDIG, {"ts": naa_ts, "okt_kwh": okt, "grunn": grunn})
+            log.info("bilen er full: %s (%.1f kWh denne tilkoblingen)", grunn, okt or 0)
+
     async def steg(self):
         naa_ts = time.time()
-        u = self.onske(naa_ts)
         lader = self.tilstand.lader or {}
         modus, final_stop = lader.get("modus"), lader.get("final_stop")
         tilkoblet = modus in (2, 3, 5)
+        if lader.get("ts") is not None and naa_ts - lader["ts"] <= 300:
+            self._sjekk_ferdig(naa_ts, lader, tilkoblet)
+        u = self.onske(naa_ts)
         if lader.get("ts") is not None:
             if tilkoblet and not self.var_tilkoblet:
                 self.stopp_i_okt = 0
@@ -194,6 +253,14 @@ class Styring:
         siden_pause = naa_ts - self.sist_pause
         siden_strom = naa_ts - self.sist_strom
         d = {"grunn": u["grunn"], "modus": modus}
+
+        if u["ferdig"] and (u["overstyring"] or {}).get("type") not in ("lad_naa", "pause"):
+            # Bilen er full: la laderen være, men hold strømmen innenfor effektvakta hvis bilen trekker noe.
+            if modus == 3 and satt is not None and u["strom"] < satt and (
+                    u.get("fasevakt") or siden_strom >= self.sc["strom_ned_min"] * 60):
+                await self._sett_strom(u["strom"], d)
+            u["handling"] = "bilen er full"
+            return
 
         if u["lade"]:
             # Strømmen først, så den er riktig når ladingen starter.
@@ -240,6 +307,10 @@ class Styring:
             self.satt_strom = strom
         await self._utfor("sett strøm", {**d, "strom": strom},
                           lambda: self.z.sett_strom(self.cfg["zaptec"]["installation_id"], strom))
+
+
+def _tall(x: float) -> str:
+    return f"{x:g}".replace(".", ",")
 
 
 def logg(db: DB, antall: int = 15) -> list[dict]:

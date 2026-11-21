@@ -74,7 +74,7 @@ De viktigste feltene:
 | Felt | Betydning |
 |---|---|
 | `modus` | `aktiv`, `dryrun` eller `av` |
-| `handling` | Hva styringen gjør nå, i klartekst, f.eks. «lader med 24 A», «pauset» eller «bilen er ikke tilkoblet» |
+| `handling` | Hva styringen gjør nå, i klartekst, f.eks. «lader med 24 A», «pauset», «bilen er full» eller «bilen er ikke tilkoblet» |
 | `grunn` | Hvorfor, f.eks. «venter til 01:00» eller «timetak 9.7 kWh: …» |
 | `lade`, `strom` | Om styringen vil lade akkurat nå, og med hvor mange ampere |
 | `overstyring` | `null` (automatisk) eller `{type, satt, til, timer?}` |
@@ -83,6 +83,7 @@ De viktigste feltene:
 | `plan.antall`, `plan.brukt`, `plan.avreise` | Ønsket antall ladetimer, hvor mange som allerede er ladet, og avreisetid |
 | `tak.kwh` | Timetaket styringen holder huset under |
 | `stopp_i_okt` | Stopp brukt i denne tilkoblingen |
+| `ferdig` | `null`, eller `{ts, okt_kwh, grunn}` når bilen er registrert som full i denne tilkoblingen. Da lader ikke styringen mer før bilen kobles fra. `lad_naa` eller `timer` nullstiller den |
 | `advarsler[]` | F.eks. at Eco-modus er på i Zaptec |
 | `logg[]` | Siste beslutninger, nyeste først: `ts`, `handling`, `detaljer`, `utfort`, `feil` |
 
@@ -181,6 +182,7 @@ Den totale elbilkostnaden er `elbil.totalt.sum + elbil.kapasitet_ekstra`.
 | Lader bilen nå? | `lader.modus == 3`, effekt i `lader.effekt_w` |
 | Når lader den i natt? | `styring.plan.valgte` (sammenhengende timer kan slås sammen til intervaller) |
 | Hvorfor lader den ikke? | `styring.handling` og `styring.grunn` |
+| Er bilen full? | `styring.ferdig` (ikke `null`), eller `lader.modus` 5 med `lader.final_stop` `false` |
 | Hva koster strømmen nå? | Raden i `priser` der `start <= nå < start + 3600`, feltet `din_pris` |
 | Er vi nær neste kapasitetstrinn? | `effektvarsel.niva`, `effektvarsel.prognose` mot `effektvarsel.grense` |
 | Hva blir strømregningen? | `/api/regning`: `inneverende.prognose.sum` |

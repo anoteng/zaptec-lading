@@ -30,6 +30,11 @@ Prioriteringene er, i rekkefølge:
   grensen for månedens kapasitetstrinn, med en liten margin. De første ti dagene i måneden brukes forrige måneds
   trinn som gulv. Blir det for lite plass igjen, pauses ladingen resten av timen.
 - **Fasevakt:** strømmen senkes straks hvis en fase nærmer seg hovedsikringen.
+- **Bilen full:** stopper bilen ladingen selv etter å ha ladet i denne tilkoblingen (i 10 minutter), eller
+  trekker den under 0,5 kW i 30 minutter, regnes den som full. Da prøver ikke styringen å starte ladingen igjen
+  i senere planlagte timer, og den pauser heller ikke bilen. Effektvakta begrenser fortsatt strømmen hvis bilen
+  trekker noe, f.eks. til forvarming. Statusen nullstilles når bilen kobles fra, og «Lad nå» eller et eget
+  antall timer overstyrer den.
 - **Effektvarsel:** push-varsel mens timen pågår hvis forbruket *utenom* bilen ligger an til å øke
   kapasitetstrinnet. Varselet sier hvor mye som må skrus av, og hvor lenge (se [Varsler](#varsler)).
 - **Overstyring fra websiden:**
