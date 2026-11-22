@@ -3,7 +3,7 @@ import datetime as dt
 import math
 import time
 
-from . import tariff
+from . import klima, tariff
 from .avtale import kwh_pris, ordning
 from .db import DB
 from .tid import dognstart, lokal, maanedstart, naa, time_av
@@ -129,10 +129,11 @@ def bygg(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
     if prognose:
         rad = serie.setdefault(prognose["time"], {"hus": None, "kilde": None})
         rad["hus"], rad["kilde"] = prognose["prognose"], "prognose"
+    ute = klima.ute_per_time(db, t48, time_av(ts) + 3600)
     timer = []
     for t in range(t48, time_av(ts) + 3600, 3600):
         v = serie.get(t, {})
-        timer.append({"start": t, "time": lokal(t).strftime("%H"), "hus": v.get("hus"), "lader": v.get("lader"), "vp": v.get("vp"),
+        timer.append({"start": t, "time": lokal(t).strftime("%H"), "hus": v.get("hus"), "lader": v.get("lader"), "vp": v.get("vp"), "ute": ute.get(t),
                       "kilde": v.get("kilde"),
                       "lavtariff": tariff.energiledd(cfg, lokal(t))[1]})
     return {

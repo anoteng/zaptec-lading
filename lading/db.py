@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS time_lader (      -- laderens energi per klokketime (
   time INTEGER PRIMARY KEY, kwh REAL);
 CREATE TABLE IF NOT EXISTS time_vp (         -- varmepumpens forbruk per klokketime fra MELCloud Home (100 Wh-oppløsning)
   time INTEGER, enhet TEXT, kwh REAL, PRIMARY KEY (time, enhet));
+CREATE TABLE IF NOT EXISTS time_klima (      -- timesnitt av ute-, inne- og ønsket temperatur fra varmepumpa
+  time INTEGER PRIMARY KEY, ute REAL, inne REAL, satt REAL);
+CREATE TABLE IF NOT EXISTS vaer_varsel (     -- værvarsel per time (Open-Meteo), siste henting
+  time INTEGER PRIMARY KEY, ute REAL, hentet INTEGER);
 CREATE TABLE IF NOT EXISTS lader_maaler (    -- laderens signerte MID-måler
   ts INTEGER PRIMARY KEY, kwh REAL);
 CREATE TABLE IF NOT EXISTS pris (            -- spotpris eks. mva

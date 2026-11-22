@@ -25,7 +25,7 @@ import aiohttp
 from aiomelcloudhome import (ATAFanSpeed, ATAOperationMode, ATAVaneHorizontal, ATAVaneVertical, MELCloudHome,
                              MelCloudHomeAuthenticationError, MelCloudHomeError, UserContext)
 
-from . import config
+from . import config, klima
 from .db import DB
 from .tid import dognstart, naa
 from .tilstand import Tilstand
@@ -35,6 +35,9 @@ SJEKK_SEK = 60
 ENERGI_SEK = 900
 ENERGI_TIMER = 23
 OPPFRISK_ETTER_SEK = 3
+KLIMA_SEK = 1800             # ute/inne/ønsket temperatur for de siste to døgnene
+KLIMA_BIT_DAGER = 7          # historikken hentes bakover en uke om gangen (lange perioder går i timeout)
+TREND_F = "%Y-%m-%dT%H:%M:%S.0000000"
 
 MODUSER = {"Heat": "has_heat_operation_mode", "Cool": "has_cool_operation_mode", "Automatic": "has_auto_operation_mode",
            "Dry": "has_dry_operation_mode", "Fan": "has_fan_operation_mode"}
@@ -262,6 +265,8 @@ class Varmepumpe:
         self.enheter: dict[str, dict] = {}
         self.ute: float | None = None
         self.sist_energi = 0.0
+        self.sist_klima = 0.0
+        self.sone = "Europe/Oslo"
         self.laas = asyncio.Lock()
         self.vekk = asyncio.Event()
 
@@ -300,6 +305,7 @@ class Varmepumpe:
             raw = await m._request("/context")  # rått svar: modellen i biblioteket tar ikke med programmet
         ctx = UserContext.model_validate(raw)
         rawenh = {u.get("id"): u for b in raw.get("buildings", []) for u in b.get("airToAirUnits", [])}
+        self.sone = next((u.get("timeZone") for u in rawenh.values() if u.get("timeZone")), self.sone)
         self.enheter = {}
         for b in ctx.buildings:
             for u in b.air_to_air_units:
@@ -309,10 +315,42 @@ class Varmepumpe:
         if time.time() - self.sist_energi >= ENERGI_SEK:
             await self._hent_energi(m)
             self.sist_energi = time.time()
+        if self.enheter:
+            await self._hent_klima(m)
         self._publiser()
         e = next(iter(self.enheter.values()), None)
-        self.kilde.ok(f"{e['navn']}: {'på' if e['paa'] else 'av'}, rom {e['rom']:g} °C" if e and e["rom"] is not None
+        self.kilde.ok(f"{e['navn']}: {'på' if e['paa'] else 'av'}, rom {str(e['rom']).replace('.', ',')} °C" if e and e["rom"] is not None
                       else f"{len(self.enheter)} enheter")
+
+    async def _trend(self, m: MELCloudHome, uid: str, fra: int, til: int) -> int:
+        """Hent temperaturkurvene (ute, inne, ønsket) for [fra, til) og lagre timesnitt."""
+        tz = ZoneInfo(self.sone)
+        params = {"unitId": uid, "period": "Hourly",   # MELCloud tolker tidene som enhetens lokale tid
+                  "from": datetime.fromtimestamp(fra, tz).strftime(TREND_F), "to": datetime.fromtimestamp(til, tz).strftime(TREND_F)}
+        async with self.laas:
+            data = await m._request("/report/v1/trendsummary", params=params, timeout=60)
+        return klima.lagre_trend(self.db, data, self.sone, fra, til)
+
+    async def _hent_klima(self, m: MELCloudHome):
+        uid = next(iter(self.enheter))
+        naa_ts = int(time.time())
+        if naa_ts - self.sist_klima >= KLIMA_SEK:
+            fra = (naa_ts - 2 * 86400) // 3600 * 3600
+            await self._trend(m, uid, fra, naa_ts)
+            self.sist_klima = naa_ts
+            return
+        # Historikk: én uke bakover per runde til MELCloud ikke har mer.
+        tilbake = self.db.hent("klima_historikk") or {}
+        if tilbake.get("ferdig"):
+            return
+        til = tilbake.get("til") or (naa_ts - 2 * 86400) // 3600 * 3600
+        fra = til - KLIMA_BIT_DAGER * 86400
+        n = await self._trend(m, uid, fra, til)
+        tomme = 0 if n else tilbake.get("tomme", 0) + 1
+        ferdig = tomme >= 2   # to tomme uker på rad: historikken er slutt
+        self.db.lagre("klima_historikk", {"til": fra, "tomme": tomme, "ferdig": ferdig})
+        if ferdig:
+            log.info("temperaturhistorikk fra MELCloud hentet")
 
     async def _hent_energi(self, m: MELCloudHome):
         til = datetime.now(UTC).replace(second=0, microsecond=0)
@@ -428,6 +466,14 @@ async def program(enhet_id: str | None, d: dict) -> dict:
 async def kjor(cfg: dict, db: DB, tilstand: Tilstand, http: aiohttp.ClientSession):
     global _aktiv
     v = _aktiv = Varmepumpe(cfg, db, tilstand, http)
+    try:
+        await _lokke(v)
+    finally:
+        if v.http and not v.http.closed:
+            await v.http.close()
+
+
+async def _lokke(v: Varmepumpe):
     feil = 0
     while True:
         etter_kommando = v.vekk.is_set()

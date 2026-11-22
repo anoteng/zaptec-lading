@@ -37,7 +37,7 @@ class Tilstand:
     oppfrisk: asyncio.Event = field(default_factory=asyncio.Event)  # be Zaptec-løkka hente status nå
     styr_naa: asyncio.Event = field(default_factory=asyncio.Event)  # be styringen regne på nytt nå
     kilder: dict[str, Kilde] = field(default_factory=lambda: {
-        k: Kilde() for k in ("tibber", "zaptec", "priser", "elvia", "varmepumpe")})
+        k: Kilde() for k in ("tibber", "zaptec", "priser", "elvia", "varmepumpe", "vaer")})
 
 
 async def sov_med_backoff(forsok: int, minst: float = 10, maks: float = 600):

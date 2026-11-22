@@ -66,6 +66,7 @@ De viktigste feltene:
 | `priser[]` | Per time i dag og i morgen: `start`, `spot` (eks. mva), `energiledd`, `din_pris` (strøm + påslag − støtte + energiledd), `lavtariff` |
 | `timer[]` | Siste 48 timer: `hus` (kWh totalt), `lader` (kWh elbil), `kilde` |
 | `effektvarsel` | Vurdering av denne timen, eller `null` uten ferske data. Se under |
+| `timer[].ute`, `timer[].vp` | Utetemperatur (°C, fra varmepumpa) og varmepumpens kWh per time |
 | `kilder` | Per datakilde (`tibber`, `zaptec`, `priser`, `elvia`): `sist_ok`, `feil` og `info` |
 | `styring` | Se under |
 
@@ -132,6 +133,9 @@ Første kall etter omstart kan ta et par sekunder. Senere kall går raskt.
 | `elbil.okter[]` | Ladeøkter, nyeste først. `pagar: true` betyr at økta pågår |
 | `elbil.maaneder[]` | Per måned: `kwh`, `energi_kr`, `ekstra_kr` og `sum` |
 | `forutsetninger` | Gjeldende strømavtale, støtteordning og mva |
+| `inneverende.temperatur` | Om prognosen er justert for værvarselet: `modell`, `ref_ute`, `varsel_ute`, `timer_justert`, `justering_kwh` |
+| `temperatur.dogn[]` | Hele døgn med utetemperatur: `dato`, `ute`, `inne`, `hus`, `lader`, `vp`, `uten_bil` (kWh), `ved` (vedfyring), `ved_timer` |
+| `temperatur.modell` | `uten_bil ≈ a + b·ute` over døgnene: `b` er kWh per døgn per grad, `r2` hvor godt det passer, `brukes` om prognosen justeres |
 
 Feltene i en månedsregning:
 
@@ -146,6 +150,8 @@ Feltene i en månedsregning:
 | `fastbelop` | Fastbeløp i strømavtalen |
 | `trinn` | Kapasitetstrinn |
 | `ore_per_kwh` | Snittpris per kWh |
+| `kwh_uten_bil` | Forbruk uten elbillading (bare der laderen er logget) |
+| `graddager`, `ute_snitt` | Graddager (basis 17 °C) og snittemperatur ute; `null` når under halve måneden har måling. For inneværende måned står de under `hittil` |
 
 Den totale elbilkostnaden er `elbil.totalt.sum + elbil.kapasitet_ekstra`.
 
@@ -245,6 +251,8 @@ ikke lagre eller endre innloggingen; det gjør brukeren på websiden.
 | Hva koster strømmen nå? | Raden i `priser` der `start <= nå < start + 3600`, feltet `din_pris` |
 | Hvor varmt er det inne/ute? | `varmepumpe.enheter[0].rom` og `varmepumpe.ute` |
 | Når senkes/økes temperaturen? | `varmepumpe.enheter[0].program.punkter` og `.neste` |
+| Brukte vi mye fordi det var kaldt? | `/api/regning`: `graddager` per måned, og `temperatur.modell` (`b`, `r2`) |
+| Fyrte vi med ved i går? | `/api/regning`: `temperatur.dogn[]` (`ved`) |
 | Hvor mye strøm bruker varmepumpen? | `varmepumpe.energi.idag_kwh`, og `timer[].vp` per time |
 | Er vi nær neste kapasitetstrinn? | `effektvarsel.niva`, `effektvarsel.prognose` mot `effektvarsel.grense` |
 | Hva blir strømregningen? | `/api/regning`: `inneverende.prognose.sum` |
@@ -254,6 +262,9 @@ ikke lagre eller endre innloggingen; det gjør brukeren på websiden.
 
 - **Bilen:** batterinivå er ikke kjent. Styringen bruker et fast antall ladetimer per natt.
 - **Laderen:** ladestrømmen i ampere kan ikke settes direkte, og det finnes ikke noe kWh-mål.
-- **Varmepumpen:** styres via MELCloud Home sitt uoffisielle API. Det kan være noen sekunders forsinkelse, og
-  romtemperaturen måles i innedelen (ofte høyt på veggen, så den viser gjerne mer enn i rommet).
+- **Varmepumpen:** styres via MELCloud Home sitt uoffisielle API, med noen sekunders forsinkelse.
+  Innetemperaturen (`rom`) måles av pumpas IR-sensor, altså overflater i rommet, ikke lufta. Ved vedfyring viser
+  den gjerne mer enn ønsket temperatur.
+- **Utetemperaturen** kommer fra varmepumpas utedel og finnes fra slutten av august 2026. Eldre måneder har
+  ikke graddager.
 - **Faste innstillinger:** modus, avreisetid og normalt antall timer settes i `.env` og krever omstart.

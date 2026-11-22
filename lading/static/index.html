@@ -158,6 +158,15 @@ td .forkl { display: block; color: var(--muted); font-size: 12px; }
       <details><summary>Vis som tabell</summary><div id="tab-regning"></div></details>
       <p class="muted" id="regning-note" style="margin:8px 0 0;font-size:13px"></p>
     </div>
+    <div class="card wide" id="temp-kort">
+      <h2>Døgnforbruk og utetemperatur <span class="muted" style="font-weight:400">(uten elbil)</span></h2>
+      <div class="legend"><span><i class="sw" style="background:var(--s1);border-radius:50%;width:9px;height:9px"></i>Uten vedfyring</span>
+        <span><i class="sw" style="background:var(--s3);border-radius:50%;width:9px;height:9px"></i>Vedfyring</span>
+        <span id="temp-linje-leg"><i class="sw" style="height:0;border-top:2px dashed var(--ink-2);width:14px"></i>Trend</span></div>
+      <div id="chart-temp"></div>
+      <p class="sub" id="temp-tekst" style="margin:6px 0 0"></p>
+      <details><summary>Vis som tabell</summary><div id="tab-temp"></div></details>
+    </div>
     <div class="card wide">
       <h2>Hva elbilen koster</h2>
       <div class="big" id="elbil-sum">–</div><div class="sub" id="elbil-sub"></div>
@@ -395,7 +404,8 @@ function tegn(d) {
     tipHtml: r => `<b>${new Date(r.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</b><br>` +
       `Totalt ${nf(r.hus, 2)} kWh${r.kilde ? ` <span class="muted">(${KILDE[r.kilde] || r.kilde})</span>` : ""}<br>` +
       `Elbil ${nf(r.lader || 0, 2)} kWh` + (harVp ? ` · varmepumpe ${nf(r.vp || 0, 1)} kWh` : "") +
-      ` · huset ellers ${nf(r.grunn, 2)} kWh<br>${r.lavtariff ? "Natt/helg-tariff" : "Dagtariff"}` });
+      ` · huset ellers ${nf(r.grunn, 2)} kWh<br>${r.lavtariff ? "Natt/helg-tariff" : "Dagtariff"}` +
+      (r.ute != null ? ` · ute ${nf(r.ute, 1)} °C` : "") });
   $("tab-timer").innerHTML = tabell([
     { t: "Time", v: r => new Date(r.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit" }) },
     { t: "Totalt kWh", n: 1, v: r => nf(r.hus, 2) }, { t: "Elbil kWh", n: 1, v: r => nf(r.lader, 2) },
@@ -540,7 +550,9 @@ function tegnRegning(d) {
     rader.map(([t, fk, v]) => `<tr><td>${t}<span class="forkl">${fk}</span></td><td class="n">${v(h)}</td><td class="n">${v(p)}</td></tr>`).join("") +
     `<tr class="sum"><td>Sum</td><td class="n">${kr(h.sum)}</td><td class="n">${kr(p.sum)}</td></tr></table>`;
 
-  const alle = [...d.historikk, { ...p, maaned: i.maaned, ordning: i.ordning, prognose: true }];
+  const alle = [...d.historikk, { ...p, maaned: i.maaned, ordning: i.ordning, prognose: true,
+                                  graddager: h.graddager, ute_snitt: h.ute_snitt }];
+  const harGd = alle.some(r => r.graddager != null);
   const smal = $("chart-regning").clientWidth < 560;
   const mnd = alle.map((r, k) => ({ ...r, netto: r.kraft_netto + r.fastbelop,
     etikett: !smal || k % 2 === alle.length % 2 ? mndNavn(r.maaned) : "" }));
@@ -551,22 +563,81 @@ function tegnRegning(d) {
     ymaksMin: 100,
     tipHtml: r => `<b>${mndNavn(r.maaned, true)}${r.prognose ? " (prognose)" : ""}</b><br>Sum ${kr(r.sum)} · ${nf(r.kwh, 0)} kWh · ${nf(r.ore_per_kwh, 0)} øre/kWh<br>` +
       `Strøm ${kr(r.kraft)}, ${(ORD[r.ordning] || r.ordning).toLowerCase().replace("norgespris", "Norgespris")} ${stotteTekst(r)}<br>` +
-      `Nettleie ${kr(r.nettleie)} (energiledd ${kr(r.energiledd)}, trinn ${r.trinn} ${kr(r.kapasitet)})` });
+      `Nettleie ${kr(r.nettleie)} (energiledd ${kr(r.energiledd)}, trinn ${r.trinn} ${kr(r.kapasitet)})` +
+      (r.graddager != null ? `<br>Ute ${nf(r.ute_snitt, 1)} °C i snitt · ${nf(r.graddager, 0)} graddager${r.prognose ? " hittil" : ""}` : "") });
   $("tab-regning").innerHTML = tabell([
     { t: "Måned", v: r => mndNavn(r.maaned, true) + (r.prognose ? " <span class=\"muted\">(prognose)</span>" : "") },
     { t: "kWh", n: 1, v: r => nf(r.kwh, 0) }, { t: "Strøm", n: 1, v: r => kr(r.kraft) },
     { t: "Støtte", n: 1, v: r => stotteTekst(r) }, { t: "Nettleie", n: 1, v: r => kr(r.nettleie) },
     ...(alle.some(r => r.fastbelop) ? [{ t: "Fastbeløp", n: 1, v: r => kr(r.fastbelop) }] : []),
     { t: "Sum", n: 1, v: r => `<b>${kr(r.sum)}</b>` }, { t: "øre/kWh", n: 1, v: r => nf(r.ore_per_kwh, 0) },
-    { t: "Trinn", n: 1, v: r => r.trinn }], [...mnd].reverse());
+    { t: "Trinn", n: 1, v: r => r.trinn },
+    ...(harGd ? [{ t: "Ute °C", n: 1, v: r => nf(r.ute_snitt, 1) },
+                 { t: "Graddager", n: 1, v: r => r.graddager == null ? "" : nf(r.graddager, 0) + (r.prognose ? " <span class=\"muted\">(hittil)</span>" : "") }] : [])],
+    [...mnd].reverse());
 
   const note = [];
   note.push("Støtte: " + f.ordninger.map(x => `${ORD[x.ordning] || x.ordning} fra ${datoTekst(x.fra)}`).join(", ") + ".");
-  note.push(`Prognosen bruker forbruksprofilen de siste ${f.profil_dager} dagene.`);
+  const tj = i.temperatur;
+  note.push(`Prognosen bruker forbruksprofilen de siste ${f.profil_dager} dagene` +
+    (tj && tj.timer_justert ? `, justert for værvarselet (${nf(tj.varsel_ute, 1)} °C mot ${nf(tj.ref_ute, 1)} °C i profilperioden, ` +
+       `${tj.justering_kwh >= 0 ? "+" : ""}${nf(tj.justering_kwh, 0)} kWh).` : ".") +
+    (harGd ? " Graddager har basis 17 °C og bygger på utetemperaturen fra varmepumpa." : ""));
   const usp = alle.reduce((a, r) => a + (r.prognose ? 0 : r.uten_spot), 0) + h.uten_spot;
   if (usp) note.push(`${usp} timer mangler spotpris, så fordelingen strøm/støtte er usikker der (med Norgespris er totalen likevel riktig).`);
   $("regning-note").textContent = note.join(" ");
   tegnElbil(d.elbil);
+  tegnTemperatur(d.temperatur);
+}
+
+// Døgnforbruk mot utetemperatur (punktdiagram), med vedfyringsdager for seg.
+function pent(lo, hi, maks = 6) {
+  const span = hi - lo || 1, mag = 10 ** Math.floor(Math.log10(span / maks));
+  const steg = [1, 2, 2.5, 5, 10].map(f => f * mag).find(st => Math.ceil(hi / st - 1e-9) - Math.floor(lo / st + 1e-9) <= maks);
+  return { lo: Math.floor(lo / steg + 1e-9) * steg, hi: Math.ceil(hi / steg - 1e-9) * steg, steg };
+}
+function tegnTemperatur(t) {
+  const kort = $("temp-kort");
+  const dager = (t && t.dogn) || [];
+  kort.hidden = dager.length < 3;
+  if (kort.hidden) return;
+  const el = $("chart-temp"), W = Math.max(320, el.clientWidth || 600), H = 260, P = { l: 44, r: 12, t: 10, b: 34 };
+  const xs = pent(Math.min(...dager.map(d => d.ute)) - 0.5, Math.max(...dager.map(d => d.ute)) + 0.5, W < 500 ? 5 : 8);
+  const ys = pent(0, Math.max(...dager.map(d => d.uten_bil)) * 1.05, 5);
+  const x = v => P.l + (v - xs.lo) / (xs.hi - xs.lo) * (W - P.l - P.r), y = v => P.t + (1 - (v - ys.lo) / (ys.hi - ys.lo)) * (H - P.t - P.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Døgnforbruk mot utetemperatur">`;
+  for (let v = ys.lo; v <= ys.hi + 1e-9; v += ys.steg)
+    s += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" stroke="${v === 0 ? "var(--axis)" : "var(--grid)"}"/><text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end">${nf(v, 0)}</text>`;
+  for (let v = xs.lo; v <= xs.hi + 1e-9; v += xs.steg)
+    s += `<line x1="${x(v)}" x2="${x(v)}" y1="${P.t}" y2="${H - P.b}" stroke="var(--grid)"/><text x="${x(v)}" y="${H - P.b + 16}" text-anchor="middle">${nf(v, 0)}</text>`;
+  s += `<text x="${W - P.r}" y="${H - 4}" text-anchor="end">°C ute</text><text x="${P.l}" y="${P.t - 1 + 10}" dx="4">kWh</text>`;
+  const m = t.modell;
+  $("temp-linje-leg").hidden = !m;
+  if (m) s += `<line x1="${x(xs.lo)}" x2="${x(xs.hi)}" y1="${y(m.a + m.b * xs.lo)}" y2="${y(m.a + m.b * xs.hi)}" stroke="var(--ink-2)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  // Nyeste døgn sist, så de ligger øverst.
+  dager.forEach((d, i) => {
+    s += `<circle cx="${x(d.ute)}" cy="${y(d.uten_bil)}" r="5" fill="${d.ved ? "var(--s3)" : "var(--s1)"}" stroke="var(--surface)" stroke-width="2"/>`;
+  });
+  dager.forEach((d, i) => { s += `<circle class="hit" data-i="${i}" cx="${x(d.ute)}" cy="${y(d.uten_bil)}" r="11" fill="transparent"/>`; });
+  el.innerHTML = s + "</svg>";
+  const dato = d => new Date(d.dato + "T12:00").toLocaleDateString("nb-NO", { weekday: "short", day: "numeric", month: "short" });
+  el.querySelectorAll(".hit").forEach(h => {
+    const d = dager[+h.dataset.i];
+    h.addEventListener("mousemove", e => visTip(e, `<b>${dato(d)}</b><br>${nf(d.uten_bil, 1)} kWh uten elbil` +
+      (d.lader ? ` (${nf(d.hus, 1)} med)` : "") + `<br>Ute ${nf(d.ute, 1)} °C · inne ${nf(d.inne, 1)} °C` +
+      (d.ved ? `<br>Vedfyring (${d.ved_timer} timer varmere enn pumpa er stilt på)` : "")));
+    h.addEventListener("mouseleave", skjulTip);
+  });
+  const ved = dager.filter(d => d.ved), uten = dager.filter(d => !d.ved), snitt = a => a.reduce((s, d) => s + d.uten_bil, 0) / a.length;
+  $("temp-tekst").textContent = (m ? (m.r2 >= 0.3
+      ? `Huset bruker ca. ${nf(-m.b, 1)} kWh mer per døgn for hver grad kaldere ute (r² ${nf(m.r2, 2)}).`
+      : `Liten sammenheng mellom utetemperatur og forbruk (r² ${nf(m.r2, 2)}): oppvarming med strøm er en liten del av forbruket.`) + " " : "") +
+    (ved.length && uten.length ? `Snitt ${nf(snitt(uten), 0)} kWh uten og ${nf(snitt(ved), 0)} kWh med vedfyring. ` : "") +
+    `${dager.length} døgn fra ${dato(dager[0]).replace(/\.$/, "")}.`;
+  $("tab-temp").innerHTML = tabell([
+    { t: "Dato", v: d => dato(d) }, { t: "Ute °C", n: 1, v: d => nf(d.ute, 1) }, { t: "Inne °C", n: 1, v: d => nf(d.inne, 1) },
+    { t: "kWh uten bil", n: 1, v: d => nf(d.uten_bil, 1) }, { t: "Elbil", n: 1, v: d => nf(d.lader, 1) },
+    { t: "Ved", v: d => d.ved ? "ja" : "" }], [...dager].reverse());
 }
 
 function tegnElbil(e) {

@@ -56,6 +56,14 @@ Prioriteringene er, i rekkefølge:
 - Strømforbruket per time vises som egen del i diagrammet over de siste 48 timene. Det trekkes fra «huset ellers».
 - Innloggingen legges inn på websiden (se [Varmepumpe](#varmepumpe)).
 
+**Temperatur og forbruk** (krever varmepumpe i MELCloud Home)
+- Utetemperatur per time fra varmepumpas utedel, med historikk så langt MELCloud har den.
+- Punktdiagram over døgnforbruk (uten elbil) mot utetemperatur. Dager med vedfyring vises for seg: de kjennes
+  igjen på at det er minst 2 °C varmere inne enn pumpa er stilt på, mens det er kaldt ute.
+- Graddager per måned (basis 17 °C), så du ser om en dyr måned skyldes kulde.
+- Med `LADING_VAER_POSISJON` justeres månedsprognosen for værvarselet (Open-Meteo), men bare når forbruket
+  faktisk henger sammen med temperaturen (r² ≥ 0,15).
+
 **Strømregning og elbilkostnad**
 - Regningen hittil i måneden og en prognose for hele måneden. Den er delt opp i strøm, Norgespris eller
   strømstønad, energiledd, kapasitetsledd og fastbeløp.
@@ -401,6 +409,7 @@ lading/
   styring.py    effektvakt, fasevakt, overstyring og utførelse
   effektvarsel.py  varsel når timen ligger an til å øke kapasitetstrinnet
   varmepumpe.py MELCloud Home: status, styring og strømforbruk per time
+  klima.py      utetemperatur, vedfyring, graddager, temperaturmodell og værvarsel
   varsel.py     push-varsler via ntfy (python -m lading.varsel sender et testvarsel)
   avtale.py     strømavtale og støtteordning
   regning.py    strømregning, prognose og historikk

@@ -10,7 +10,7 @@ from . import config
 from .tibber import API as TIBBER_API
 from .zaptec import Zaptec
 
-HJEM = """{ viewer { homes { id appNickname address { address1 postalCode city }
+HJEM = """{ viewer { homes { id appNickname address { address1 postalCode city latitude longitude }
   features { realTimeConsumptionEnabled } } } }"""
 
 
@@ -25,6 +25,8 @@ async def tibber(http: aiohttp.ClientSession, token: str):
         print(f"  LADING_TIBBER_HOME_ID={h['id']}")
         print(f"      {h.get('appNickname') or ''} {a.get('address1') or ''}, {a.get('postalCode') or ''} "
               f"{a.get('city') or ''} · sanntid: {'ja' if sanntid else 'nei'}")
+        if a.get("latitude") and a.get("longitude"):  # avrundet: nok til værvarsel, uten å peke ut huset
+            print(f"      LADING_VAER_POSISJON={float(a['latitude']):.1f},{float(a['longitude']):.1f}   (valgfritt, værvarsel)")
 
 
 async def zaptec(http: aiohttp.ClientSession, bruker: str, passord: str):

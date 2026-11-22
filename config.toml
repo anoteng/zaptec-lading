@@ -131,6 +131,11 @@ effekt = true              # varsle når forbruket ligger an til å øke kapasit
 effekt_fra_min = 5         # tidligst så mange minutter ut i timen
 lenke = ""                 # åpnes når man trykker på varselet, f.eks. https://lading.ditt-domene.no
 
+# Værvarsel fra Open-Meteo (gratis, uten nøkkel) til månedsprognosen. Posisjon «bredde,lengde» i desimalgrader,
+# gjerne avrundet til én desimal (5–10 km). Tom = av. «.venv/bin/python -m lading.finn» foreslår en verdi.
+[vaer]
+posisjon = ""
+
 [web]
 host = "127.0.0.1"         # IKKE 0.0.0.0: websiden har ingen innlogging
 port = 8093

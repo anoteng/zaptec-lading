@@ -7,15 +7,16 @@ import dataclasses
 import datetime as dt
 import time
 
-from . import status, tariff
+from . import klima, status, tariff
 from .avtale import ORDNINGER, avtale, kwh_pris, ordning
 from .db import DB
-from .tid import helligdager, lokal, maanedstart, naa, time_av
+from .tid import dognstart, helligdager, lokal, maanedstart, naa, time_av
 from .tilstand import Tilstand
 
 PROFIL_DAGER = 28   # forbruksprofilen for prognosen bygger på så mange dager bakover
 TOPP_DAGER = 14     # døgnmakser for resten av måneden anslås fra så mange dager bakover
 CACHE_SEK = 600     # historikken (avsluttede måneder) regnes ut på nytt så ofte
+KLIMA_DAGER = 365   # temperaturmodellen bygger på så mange dager bakover (når det finnes temperatur)
 
 
 def neste_maaned(d: dt.date) -> dt.date:
@@ -98,8 +99,24 @@ def maaned_faktisk(db: DB, cfg: dict, start: dt.date) -> dict:
         if serie[t]["hus"] is not None:
             s.legg_til(cfg, t, serie[t]["hus"], spot.get(t))
     dogn = [v["kwh"] for v in status.dognmaks(serie).values()]
+    lader = sum(v.get("lader") or 0.0 for v in serie.values())
     return {"maaned": start.strftime("%Y-%m"), "ordning": _ordning(cfg, start),
-            "timer_mangler": (til - fra) // 3600 - s.timer, **_resultat(cfg, s, dogn, start, 1.0)}
+            "timer_mangler": (til - fra) // 3600 - s.timer, **_resultat(cfg, s, dogn, start, 1.0),
+            "kwh_uten_bil": round(s.kwh - lader, 1), **_klima(db, fra, til)}
+
+
+def _klima(db: DB, fra: int, til: int) -> dict:
+    """Graddager og snittemperatur, bare når minst halve perioden har måling."""
+    g = klima.graddager(db, fra, til)
+    return g if g["dekning"] >= 0.5 else {"graddager": None, "ute_snitt": None, "dekning": g["dekning"]}
+
+
+def temperaturmodell(db: DB) -> tuple[list[dict], dict | None]:
+    """Døgnforbruk mot utetemperatur og den lineære modellen (se klima.modell)."""
+    idag = naa().date()
+    serie = status.timeserie(db, dognstart(idag - dt.timedelta(days=KLIMA_DAGER)), dognstart(idag))
+    dager = klima.dogn(db, serie)
+    return dager, klima.modell(dager)
 
 
 def _fridag(d: dt.date) -> bool:
@@ -166,8 +183,23 @@ def inneverende(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
         prog.legg_til(cfg, denne, max(0.0, tp["prognose"] - tp["hittil"]), spot.get(denne))
     else:
         prog.legg_til(cfg, denne, profil(denne), spot.get(denne, spot_snitt))
+    # Kommende timer: profilen, justert for værvarselet når forbruket henger tydelig sammen med temperaturen.
+    _, mod = temperaturmodell(db)
+    ute_hist = klima.ute_per_time(db, hist_fra, denne)
+    ref = sum(ute_hist.values()) / len(ute_hist) if len(ute_hist) >= (denne - hist_fra) / 3600 * 0.5 else None
+    ute_fram = klima.ute_per_time(db, denne + 3600, til, varsel=True) if mod and mod["brukes"] and ref is not None else {}
+    justert, just_kwh = [], 0.0
     for t in range(denne + 3600, til, 3600):
-        prog.legg_til(cfg, t, profil(t), spot.get(t, spot_snitt))
+        kwh = profil(t)
+        if t in ute_fram:
+            ny = max(0.0, kwh + mod["b"] / 24 * (ute_fram[t] - ref))
+            just_kwh += ny - kwh
+            justert.append(ute_fram[t])
+            kwh = ny
+        prog.legg_til(cfg, t, kwh, spot.get(t, spot_snitt))
+    temperatur = {"modell": mod, "ref_ute": round(ref, 1) if ref is not None else None,
+                  "varsel_ute": round(sum(justert) / len(justert), 1) if justert else None,
+                  "timer_justert": len(justert), "justering_kwh": round(just_kwh, 1)}
 
     # Døgnmakser: faktiske så langt (med prognose for denne timen), anslag for dagene som gjenstår.
     if tp:
@@ -186,8 +218,9 @@ def inneverende(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
     andel = (ts - fra) / (til - fra)
     return {"maaned": start.strftime("%Y-%m"), "ordning": _ordning(cfg, start), "andel": round(andel, 4),
             "timer_mangler": len(mangler),
-            "hittil": _resultat(cfg, hittil, list(dogn.values()), start, andel),
-            "prognose": _resultat(cfg, prog, list(prog_dogn.values()), start, 1.0)}
+            "hittil": {**_resultat(cfg, hittil, list(dogn.values()), start, andel), **_klima(db, fra, denne)},
+            "prognose": _resultat(cfg, prog, list(prog_dogn.values()), start, 1.0),
+            "temperatur": temperatur}
 
 
 _cache: dict = {"ts": 0.0, "nokkel": None, "data": None}
@@ -218,6 +251,7 @@ def bygg(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
     return {"tid": naa().isoformat(timespec="seconds"),
             "inneverende": inneverende(db, cfg, tilstand),
             "historikk": historikk(db, cfg),
+            "temperatur": dict(zip(("dogn", "modell"), temperaturmodell(db))),
             "forutsetninger": {"avtale": avtale(cfg, idag), "ordning": ordning(cfg, idag),
                                "ordninger": rc["ordninger"], "ordningsnavn": ORDNINGER, "mva": rc["mva"],
                                "profil_dager": PROFIL_DAGER}}
