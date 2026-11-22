@@ -69,6 +69,13 @@ button:hover { border-color: var(--ink-2); }
 button.valgt { background: var(--s1); border-color: var(--s1); color: #fff; }
 input[type=number], input[type=date], input[type=text], select { font: inherit; font-size: 14px; width: 64px; padding: 5px 6px;
   border-radius: 8px; border: 1px solid var(--ring); background: var(--page); color: var(--ink); }
+input[type=email], input[type=password] { font: inherit; font-size: 16px; width: 100%; max-width: 320px; padding: 6px 8px;
+  display: block; margin-top: 4px; }
+label.felt { display: block; margin: 8px 0; }
+input[type=time] { font: inherit; font-size: 14px; padding: 5px 6px; }
+.prog-rad { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--grid); }
+.prog-rad .dager { display: inline-flex; gap: 3px; }
+.prog-rad button.dag { padding: 4px 6px; min-width: 36px; font-size: 13px; }
 input[type=number].bred { width: 84px; } input[type=date] { width: auto; } input[type=text] { width: 100%; min-width: 120px; } select { width: auto; }
 button:disabled { opacity: .45; cursor: default; }
 .rediger td { vertical-align: middle; } .rediger label { white-space: nowrap; margin-right: 8px; }
@@ -165,6 +172,7 @@ td .forkl { display: block; color: var(--muted); font-size: 12px; }
     <div class="card wide">
       <h2>Forbruk siste 48 timer</h2>
       <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Huset ellers</span>
+        <span id="leg-vp" hidden><i class="sw" style="background:var(--s3)"></i>Varmepumpe</span>
         <span><i class="sw" style="background:var(--s2)"></i>Elbil</span>
         <span><i class="sw" style="background:var(--band);outline:1px solid var(--ring)"></i>Natt/helg-tariff</span>
         <span><i class="sw" style="height:2px;background:var(--ink-2)"></i>Grense for trinnet</span></div>
@@ -198,6 +206,51 @@ td .forkl { display: block; color: var(--muted); font-size: 12px; }
           <button type="button" id="in-tilbake" title="Slett det som er lagret her og bruk verdiene i config.toml">Tilbakestill til config.toml</button>
           <span id="in-status" class="sub"></span>
         </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card wide" id="vp">
+      <h2>Varmepumpe <span class="muted" style="font-weight:400" id="vp-navn"></span></h2>
+      <div id="vp-styring" hidden>
+        <div class="big" id="vp-temp" style="font-size:22px">–</div><div class="sub" id="vp-info"></div>
+        <div class="knapper" id="vp-knapper">
+          <button type="button" id="vp-paa">Slå på</button>
+          <span id="vp-moduser" style="display:inline-flex;gap:6px;flex-wrap:wrap"></span>
+        </div>
+        <div class="knapper">
+          <span style="display:inline-flex;gap:6px;align-items:center">Ønsket
+            <button type="button" id="vp-ned" aria-label="Lavere temperatur">−</button>
+            <b id="vp-satt" style="min-width:64px;text-align:center">–</b>
+            <button type="button" id="vp-opp" aria-label="Høyere temperatur">+</button></span>
+          <label>Vifte <select id="vp-vifte" aria-label="Viftehastighet"></select></label>
+          <label>Opp/ned <select id="vp-lamell-v" aria-label="Luftretning opp/ned"></select></label>
+          <label>Side <select id="vp-lamell-h" aria-label="Luftretning til siden"></select></label>
+          <span id="vp-styr-status" class="sub"></span>
+        </div>
+        <details id="vp-prog"><summary id="vp-prog-tittel">Ukeprogram</summary>
+          <p class="sub" style="margin:8px 0">Programmet ligger i MELCloud og kjøres derfra, også når denne tjenesten er nede.
+            Hvert punkt setter temperatur og modus på valgte dager og klokkeslett. Punktene slår ikke pumpen av eller på.</p>
+          <label style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="vp-prog-aktiv"> Programmet er på</label>
+          <div id="vp-prog-liste"></div>
+          <div class="knapper"><button type="button" id="vp-prog-ny">Legg til punkt</button>
+            <span id="vp-prog-status" class="sub"></span></div>
+        </details>
+      </div>
+      <div class="sub" id="vp-naa">laster …</div>
+      <details id="vp-detaljer"><summary id="vp-summary">Koble til MELCloud Home</summary>
+        <p style="margin:8px 0">Logg inn med kontoen fra MELCloud Home-appen. Innloggingen testes før den lagres på
+          serveren (i <code>.env</code>), og passordet vises aldri igjen.</p>
+        <form id="vp-skjema" autocomplete="on">
+          <label class="felt">E-post <input type="email" id="vp-bruker" name="username" autocomplete="username" required></label>
+          <label class="felt">Passord <input type="password" id="vp-passord" name="password" autocomplete="current-password" required></label>
+          <div class="knapper">
+            <button type="submit" class="valgt" id="vp-lagre">Koble til</button>
+            <button type="button" id="vp-fjern" hidden>Fjern innlogging</button>
+            <span id="vp-status" class="sub"></span>
+          </div>
+        </form>
       </details>
     </div>
   </section>
@@ -331,17 +384,22 @@ function tegn(d) {
 
   // 48 timer
   const timer = d.timer.map((r, i) => ({ ...r, etikett: i % 3 === 0 ? r.time : "", markert: i === d.timer.length - 1,
-    grunn: r.hus == null ? null : Math.max(0, r.hus - (r.lader || 0)) }));
+    grunn: r.hus == null ? null : Math.max(0, r.hus - (r.lader || 0) - (r.vp || 0)) }));
+  const harVp = !!d.varmepumpe || d.timer.some(r => r.vp != null);
+  $("leg-vp").hidden = !harVp;
   soyler($("chart-timer"), timer, {
     serier: [{ v: r => r.grunn, farge: "var(--s1)", opacity: r => r.kilde === "prognose" ? 0.55 : 1 },
+             { v: r => r.vp, farge: "var(--s3)" },
              { v: r => r.lader, farge: "var(--s2)" }],
     band: r => r.lavtariff, ref: tak ? tak.sikkert : null, enhet: "kWh", ymaksMin: 1,
     tipHtml: r => `<b>${new Date(r.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit", minute: "2-digit" })}</b><br>` +
       `Totalt ${nf(r.hus, 2)} kWh${r.kilde ? ` <span class="muted">(${KILDE[r.kilde] || r.kilde})</span>` : ""}<br>` +
-      `Elbil ${nf(r.lader || 0, 2)} kWh · huset ellers ${nf(r.grunn, 2)} kWh<br>${r.lavtariff ? "Natt/helg-tariff" : "Dagtariff"}` });
+      `Elbil ${nf(r.lader || 0, 2)} kWh` + (harVp ? ` · varmepumpe ${nf(r.vp || 0, 1)} kWh` : "") +
+      ` · huset ellers ${nf(r.grunn, 2)} kWh<br>${r.lavtariff ? "Natt/helg-tariff" : "Dagtariff"}` });
   $("tab-timer").innerHTML = tabell([
     { t: "Time", v: r => new Date(r.start * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit" }) },
     { t: "Totalt kWh", n: 1, v: r => nf(r.hus, 2) }, { t: "Elbil kWh", n: 1, v: r => nf(r.lader, 2) },
+    ...(harVp ? [{ t: "Varmepumpe kWh", n: 1, v: r => nf(r.vp, 1) }] : []),
     { t: "Kilde", v: r => KILDE[r.kilde] || "" }], [...d.timer].reverse());
 
   // Priser
@@ -391,9 +449,10 @@ function tegn(d) {
   }
 
   tegnStyring(d.styring);
+  tegnVarmepumpe(d.varmepumpe);
 
   // Kilder
-  const NAVN = { tibber: "Tibber Pulse", zaptec: "Zaptec", priser: "Spotpriser", elvia: "Elvia" };
+  const NAVN = { tibber: "Tibber Pulse", zaptec: "Zaptec", priser: "Spotpriser", elvia: "Elvia", varmepumpe: "Varmepumpe" };
   $("kilder").innerHTML = tabell([
     { t: "Kilde", v: ([k, v]) => `<span style="display:inline-flex;align-items:center;gap:6px"><i class="dot" style="background:${v.feil ? "var(--crit)" : v.sist_ok ? "var(--good)" : "var(--muted)"}"></i>${NAVN[k]}</span>` },
     { t: "Sist OK", v: ([k, v]) => siden(v.sist_ok) + (v.info ? `<br><span class="muted">${esc(v.info)}</span>` : "") + (v.feil ? `<br><span class="err">${esc(v.feil)}</span>` : "") }],
@@ -607,6 +666,213 @@ innstEl.addEventListener("click", e => {
 });
 addEventListener("beforeunload", e => { if (endret) e.preventDefault(); });
 hentInnst();
+
+// Varmepumpe: status og styring via MELCloud Home.
+const VP_MODUS = { Heat: "Varme", Cool: "Kjøling", Automatic: "Auto", Dry: "Tørk", Fan: "Vifte" };
+const VP_VIFTE = { Auto: "Auto", One: "1", Two: "2", Three: "3", Four: "4", Five: "5" };
+const VP_V = { Auto: "Auto", One: "1 (øverst)", Two: "2", Three: "3", Four: "4", Five: "5 (nederst)", Swing: "Sving" };
+const VP_H = { Auto: "Auto", Left: "Venstre", LeftCentre: "Venstre–midt", Centre: "Midt", RightCentre: "Høyre–midt", Right: "Høyre", Swing: "Sving" };
+let vp = null, vpSatt = null, vpTidsur = null, vpHoldTil = 0;
+function vpValg(el, valg, verdi, aktiv = true) {
+  const html = Object.entries(valg).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join("");
+  if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+  if (document.activeElement !== el) el.value = verdi ?? "";
+  el.disabled = !aktiv;
+}
+function vpTegnSatt() { $("vp-satt").textContent = vpSatt == null ? "–" : `${nf(vpSatt, 1)} °C`; }
+function tegnVarmepumpe(v) {
+  const e = v && v.enheter && v.enheter[0];
+  $("vp-styring").hidden = !e;
+  if (!e) { $("vp-navn").textContent = ""; return; }
+  vp = e;
+  const ev = e.evner;
+  $("vp-navn").textContent = e.navn;
+  $("vp-temp").innerHTML = (e.rom != null ? `${nf(e.rom, 1)} °C <small>inne</small>` : "–") +
+    (v.ute != null ? ` · ${nf(v.ute, 1)} °C <small>ute</small>` : "");
+  const en = v.energi || {};
+  $("vp-info").innerHTML = [e.paa ? `På: ${esc(VP_MODUS[e.modus] || e.modus)}, ønsket ${nf(e.temperatur, 1)} °C` : "Av",
+    e.paa && e.faktisk_vifte ? `viften går på ${esc(VP_VIFTE[e.faktisk_vifte] || e.faktisk_vifte)}` : "",
+    ev.energimaaler ? `strøm i dag ${nf(en.idag_kwh || 0, 1)} kWh` : "",
+    e.feil ? `<span class="err">Feil på varmepumpen${e.feilkode ? ` (kode ${esc(e.feilkode)})` : ""}</span>` : ""]
+    .filter(Boolean).join(" · ");
+  $("vp-paa").textContent = e.paa ? "Slå av" : "Slå på";
+  $("vp-paa").classList.toggle("valgt", !!e.paa);
+  const mod = ev.moduser.map(m => `<button type="button" data-modus="${m}" class="${e.modus === m ? "valgt" : ""}">${esc(VP_MODUS[m] || m)}</button>`).join("");
+  if ($("vp-moduser").innerHTML !== mod) $("vp-moduser").innerHTML = mod;
+  if (Date.now() > vpHoldTil) { vpSatt = e.temperatur; vpTegnSatt(); }
+  const fart = Object.fromEntries(Object.entries(VP_VIFTE).filter(([k], i) => k === "Auto" ? ev.auto_vifte : i <= ev.vifter));
+  vpValg($("vp-vifte"), fart, e.vifte);
+  const utenSving = o => ev.sving ? o : Object.fromEntries(Object.entries(o).filter(([k]) => k !== "Swing"));
+  vpValg($("vp-lamell-v"), utenSving(VP_V), e.lamell_v, ev.lamell_v);
+  vpValg($("vp-lamell-h"), utenSving(VP_H), e.lamell_h, ev.lamell_h);
+  tegnProgram(e.program, ev);
+}
+// Ukeprogrammet (MELCloud cloud schedule). Kopien redigeres lokalt og lagres punkt for punkt.
+const DAGNAVN = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
+let vpProg = null, vpProgSkitten = false;
+function dagerTekst(d) {
+  const s = [...d].sort((a, b) => a - b);
+  if (s.length === 7) return "alle dager";
+  const sammenhengende = s.every((x, i) => i === 0 || x === s[i - 1] + 1);
+  return sammenhengende && s.length > 2 ? `${DAGNAVN[s[0] - 1]}–${DAGNAVN[s.at(-1) - 1]}`.toLowerCase()
+                                        : s.map(x => DAGNAVN[x - 1].toLowerCase()).join(", ");
+}
+function nesteTekst(n) {
+  const t = new Date(n.ts * 1000), idag = new Date(), imorgen = new Date(Date.now() + 864e5);
+  const dag = t.toDateString() === idag.toDateString() ? "i dag" : t.toDateString() === imorgen.toDateString() ? "i morgen"
+    : t.toLocaleDateString("nb-NO", { weekday: "long" });
+  return `${dag} kl. ${t.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })} → ${nf(n.temperatur, 1)} °C` +
+    (n.modus !== "Heat" ? ` (${(VP_MODUS[n.modus] || n.modus).toLowerCase()})` : "") + (n.paa ? "" : ", slår av pumpen");
+}
+function tegnProgram(prog, ev) {
+  $("vp-prog").hidden = !prog;
+  if (!prog) return;
+  $("vp-prog-tittel").textContent = `Ukeprogram: ${prog.aktiv ? `${prog.punkter.length} punkter` : "av"}` +
+    (prog.aktiv && prog.neste ? `, neste ${nesteTekst(prog.neste)}` : "");
+  if (vpProgSkitten || document.activeElement && document.activeElement.closest && document.activeElement.closest("#vp-prog")) return;  // ikke overskriv det som redigeres
+  vpProg = JSON.parse(JSON.stringify(prog));
+  vpProg.ev = ev;
+  tegnProgramListe();
+}
+function tegnProgramListe() {
+  const ev = vpProg.ev, moduser = ev.moduser.filter(m => ["Heat", "Cool", "Automatic", "Dry"].includes(m));
+  $("vp-prog-aktiv").checked = vpProg.aktiv;
+  $("vp-prog-liste").innerHTML = vpProg.punkter.map((p, i) => {
+    const [lo, hi] = ev.temp[p.modus] || [10, 31];
+    return `<div class="prog-rad" data-i="${i}">
+      <span class="dager">${DAGNAVN.map((n, j) => `<button type="button" class="dag ${p.dager.includes(j + 1) ? "valgt" : ""}" data-dag="${j + 1}" aria-pressed="${p.dager.includes(j + 1)}">${n}</button>`).join("")}</span>
+      <input type="time" data-f="tid" value="${esc(p.tid)}" aria-label="Klokkeslett">
+      <label><input type="number" class="bred" data-f="temperatur" step="${ev.halve ? 0.5 : 1}" min="${lo}" max="${hi}" value="${p.temperatur ?? ""}" aria-label="Temperatur"> °C</label>
+      <select data-f="modus" aria-label="Modus">${moduser.map(m => `<option value="${m}" ${m === p.modus ? "selected" : ""}>${esc(VP_MODUS[m])}</option>`).join("")}</select>
+      ${p.paa ? "" : `<span class="err">slår av pumpen</span>`}
+      <button type="button" class="${p._endret ? "valgt" : ""}" data-lagre ${p._endret ? "" : "disabled"}>Lagre</button>
+      <button type="button" data-slett>${p.id ? "Slett" : "Avbryt"}</button></div>`;
+  }).join("") || `<p class="muted">Ingen punkter.</p>`;
+}
+function progStatus(html, cls = "sub") { $("vp-prog-status").className = cls; $("vp-prog-status").innerHTML = html; }
+async function vpProgPost(body, ok) {
+  progStatus("Sender til MELCloud …");
+  try {
+    const r = await fetch("api/varmepumpe/program", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" },
+      body: JSON.stringify({ enhet: vp.id, ...body }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.feil || "HTTP " + r.status);
+    vpProgSkitten = false;
+    tegnProgram(d, vp.evner); vpProg && tegnProgramListe();
+    progStatus(ok, "status-ok");
+    oppdater();
+  } catch (e) { progStatus(`Ble ikke lagret: ${esc(e.message)}`, "err"); }
+}
+function progEndret(i) { vpProg.punkter[i]._endret = true; vpProgSkitten = true; }
+$("vp-prog-liste").addEventListener("click", e => {
+  const rad = e.target.closest(".prog-rad"); if (!rad || !vpProg) return;
+  const i = +rad.dataset.i, p = vpProg.punkter[i], b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.dag) {
+    const d = +b.dataset.dag;
+    p.dager = p.dager.includes(d) ? p.dager.filter(x => x !== d) : [...p.dager, d].sort((a, c) => a - c);
+    progEndret(i); tegnProgramListe();
+  } else if (b.hasAttribute("data-lagre")) {
+    if (!p.dager.length) return progStatus("Velg minst én dag.", "err");
+    vpProgPost({ handling: "lagre", punkt: { id: p.id || undefined, dager: p.dager, tid: p.tid, modus: p.modus, temperatur: p.temperatur } },
+               `Lagret: ${dagerTekst(p.dager)} kl. ${p.tid} → ${nf(p.temperatur, 1)} °C.`);
+  } else if (b.hasAttribute("data-slett")) {
+    if (!p.id) { vpProg.punkter.splice(i, 1); vpProgSkitten = vpProg.punkter.some(x => x._endret); tegnProgramListe(); return; }
+    if (confirm(`Slette punktet ${dagerTekst(p.dager)} kl. ${p.tid} (${nf(p.temperatur, 1)} °C) fra programmet?`))
+      vpProgPost({ handling: "slett", id: p.id }, "Punktet er slettet.");
+  }
+});
+$("vp-prog-liste").addEventListener("input", e => {
+  const rad = e.target.closest(".prog-rad"), f = e.target.dataset.f; if (!rad || !f || !vpProg) return;
+  const i = +rad.dataset.i;
+  vpProg.punkter[i][f] = f === "temperatur" ? (e.target.value === "" ? null : +e.target.value) : e.target.value;
+  progEndret(i);
+  const knapp = rad.querySelector("[data-lagre]"); knapp.disabled = false; knapp.classList.add("valgt");
+});
+$("vp-prog-ny").addEventListener("click", () => {
+  if (!vpProg) return;
+  vpProg.punkter.push({ id: null, dager: [1, 2, 3, 4, 5], tid: "06:00", modus: vp.modus === "Cool" ? "Cool" : "Heat", temperatur: 20, paa: true, _endret: true });
+  vpProgSkitten = true; tegnProgramListe();
+});
+$("vp-prog-aktiv").addEventListener("change", e => {
+  const paa = e.target.checked;
+  if (!paa && !confirm("Slå av ukeprogrammet? Pumpen blir stående på innstillingen den har nå, til programmet slås på igjen.")) {
+    e.target.checked = true; return;
+  }
+  vpProgPost({ handling: "aktiv", aktiv: paa }, paa ? "Programmet er slått på." : "Programmet er slått av.");
+});
+
+async function vpStyr(body) {
+  if (!vp) return;
+  $("vp-styr-status").className = "sub"; $("vp-styr-status").textContent = "Sender …";
+  try {
+    const r = await fetch("api/varmepumpe", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" },
+      body: JSON.stringify({ enhet: vp.id, ...body }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.feil || "HTTP " + r.status);
+    $("vp-styr-status").className = "status-ok"; $("vp-styr-status").textContent = "Sendt.";
+    setTimeout(() => { if ($("vp-styr-status").textContent === "Sendt.") $("vp-styr-status").textContent = ""; }, 4000);
+    oppdater(); setTimeout(oppdater, 5000);
+  } catch (e) { $("vp-styr-status").className = "err"; $("vp-styr-status").textContent = `Ble ikke sendt: ${e.message}`; }
+}
+// Kompressoren skal ikke startes og stoppes ofte: av/på bare med bekreftelse, aldri som bieffekt.
+$("vp-paa").addEventListener("click", () => {
+  if (vp && confirm(vp.paa ? "Slå AV varmepumpen? Den bør normalt styres med temperaturen, ikke slås av og på."
+                           : "Slå PÅ varmepumpen?")) vpStyr({ paa: !vp.paa });
+});
+$("vp-moduser").addEventListener("click", e => {
+  const b = e.target.closest("button[data-modus]");
+  if (b && vp && b.dataset.modus !== vp.modus) vpStyr({ modus: b.dataset.modus });
+});
+function vpEndreTemp(retning) {
+  if (!vp || vpSatt == null) return;
+  const steg = vp.evner.halve ? 0.5 : 1, [lo, hi] = vp.evner.temp[vp.modus] || [10, 31];
+  vpSatt = Math.min(hi, Math.max(lo, Math.round((vpSatt + retning * steg) / steg) * steg));
+  vpTegnSatt();
+  // Vent til klikkingen har stoppet, så blir det én kommando i stedet for mange.
+  vpHoldTil = Date.now() + 8000;
+  clearTimeout(vpTidsur);
+  vpTidsur = setTimeout(() => vpStyr({ temperatur: vpSatt }), 1200);
+}
+$("vp-ned").addEventListener("click", () => vpEndreTemp(-1));
+$("vp-opp").addEventListener("click", () => vpEndreTemp(1));
+$("vp-vifte").addEventListener("change", e => vpStyr({ vifte: e.target.value }));
+$("vp-lamell-v").addEventListener("change", e => vpStyr({ lamell_v: e.target.value }));
+$("vp-lamell-h").addEventListener("change", e => vpStyr({ lamell_h: e.target.value }));
+
+// Varmepumpe: innlogging til MELCloud Home (passordet går bare én vei, til serveren).
+function vpStatus(html, cls = "sub") { $("vp-status").className = cls; $("vp-status").innerHTML = html; }
+function tegnVp(d) {
+  const enh = (d.enheter || []).map(e => `${esc(e.navn)} (${esc(e.type)}${e.energimaaler ? ", med energimåler" : ""})`).join(", ");
+  $("vp-naa").innerHTML = d.satt ? `Tilkoblet MELCloud Home som ${esc(d.bruker)}` + (enh ? `: ${enh}` : "")
+                                 : "Ikke tilkoblet. Legg inn innloggingen fra MELCloud Home-appen.";
+  $("vp-summary").textContent = d.satt ? "Bytt innlogging" : "Koble til MELCloud Home";
+  $("vp-fjern").hidden = !d.satt;
+  if (!d.satt) $("vp-detaljer").open = true;
+}
+async function vpPost(body, venter) {
+  vpStatus(venter);
+  $("vp-lagre").disabled = true;
+  try {
+    const r = await fetch("api/varmepumpe/innlogging", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.feil || "HTTP " + r.status);
+    $("vp-passord").value = "";
+    tegnVp(d);
+    vpStatus(body.fjern ? "Innloggingen er fjernet." : "Innloggingen virker og er lagret.", "status-ok");
+    if (!body.fjern) $("vp-detaljer").open = false;
+  } catch (e) { vpStatus(esc(e.message), "err"); }
+  finally { $("vp-lagre").disabled = false; }
+}
+$("vp-skjema").addEventListener("submit", e => {
+  e.preventDefault();
+  vpPost({ bruker: $("vp-bruker").value, passord: $("vp-passord").value }, "Tester innloggingen …");
+});
+$("vp-fjern").addEventListener("click", () => {
+  if (confirm("Fjerne MELCloud Home-innloggingen fra serveren?")) vpPost({ fjern: true }, "Fjerner …");
+});
+fetch("api/varmepumpe/innlogging", { cache: "no-store" }).then(r => r.json()).then(tegnVp)
+  .catch(e => { $("vp-naa").innerHTML = `<span class="err">Klarte ikke å hente status (${esc(e.message)})</span>`; });
 
 let sistRegning = null;
 async function oppdaterRegning() {

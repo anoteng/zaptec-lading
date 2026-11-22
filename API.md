@@ -163,6 +163,65 @@ Den totale elbilkostnaden er `elbil.totalt.sum + elbil.kapasitet_ekstra`.
 - `{"tilbakestill": true}` går tilbake til verdiene i `config.toml`.
 - Endringen slår inn i regningen med en gang, også bakover i tid.
 
+### `POST /api/varmepumpe`: styr varmepumpen
+
+Status står i `/api/status` under `varmepumpe` (`null` når ingen innlogging er lagt inn):
+
+| Felt | Betydning |
+|---|---|
+| `enheter[]` | Én per luft-luft-enhet: `id`, `navn`, `paa`, `modus`, `temperatur` (ønsket), `rom` (målt i innedelen), `vifte`, `faktisk_vifte`, `lamell_v`, `lamell_h`, `feil`, `feilkode` |
+| `enheter[].evner` | Hva enheten kan: `moduser`, `temp` (min/maks per modus), `halve` (halve grader), `vifter`, `auto_vifte`, `lamell_v`, `lamell_h`, `sving`, `energimaaler` |
+| `ute` | Utetemperatur fra utedelen |
+| `energi.idag_kwh` | Strøm brukt i dag (100 Wh-oppløsning, noen minutter forsinket) |
+
+`timer[].vp` er varmepumpens kWh per time. Den er en del av `hus`, og huset ellers er `hus − lader − vp`.
+
+**Slå aldri pumpen av eller på (`paa`) uten at brukeren uttrykkelig ber om det.** Kompressoren tåler dårlig
+hyppige start og stopp; pumpen styres med `temperatur`, og eventuelt `modus` (kjøling om sommeren). Et
+modusbytte slår ikke pumpen på.
+
+Send bare det som skal endres:
+
+```json
+{"enhet": "<id, valgfri når det bare er én>", "paa": true, "modus": "Heat", "temperatur": 21.5, "vifte": "Auto"}
+```
+
+- `modus`: `Heat`, `Cool`, `Automatic`, `Dry` eller `Fan`, så langt `evner.moduser` tillater.
+- `temperatur`: innenfor `evner.temp[modus]`, i steg på 0,5 °C når `evner.halve` er `true`, ellers hele grader.
+- `vifte`: `Auto`, `One` … `Five`. `lamell_v`: `Auto`, `One` … `Five`, `Swing`. `lamell_h`: `Auto`, `Left`, `LeftCentre`,
+  `Centre`, `RightCentre`, `Right`, `Swing`.
+- Svaret er enheten med endringen. Statusen i `/api/status` er bekreftet av MELCloud noen sekunder senere.
+- Ugyldige verdier gir `400`, og en kommando MELCloud avviser gir `502`. Begge med forklaring i `feil`.
+- Ikke send mange kommandoer på rad (f.eks. én per halve grad). Regn ut måltemperaturen og send den én gang.
+
+### `POST /api/varmepumpe/program`: ukeprogrammet
+
+Programmet ligger i MELCloud og kjøres derfra. Det står i `/api/status` under `varmepumpe.enheter[].program`:
+
+| Felt | Betydning |
+|---|---|
+| `aktiv` | Om programmet er slått på |
+| `punkter[]` | `id`, `dager` (ISO-ukedager, 1 = mandag … 7 = søndag), `tid` (`"HH:MM"`, lokal tid), `modus`, `temperatur`, `paa` |
+| `neste` | Neste programendring: `ts` (UTC), `temperatur`, `modus`, `paa` |
+
+Et punkt setter temperatur og modus fra klokkeslettet og gjelder til neste punkt. Nattsenking er altså et punkt
+med lav temperatur om kvelden og et med vanlig temperatur om morgenen.
+
+```json
+{"handling": "lagre", "punkt": {"dager": [1, 2, 3, 4, 5], "tid": "06:00", "temperatur": 20, "modus": "Heat"}}
+{"handling": "lagre", "punkt": {"id": "<eksisterende id>", "temperatur": 18}}
+{"handling": "slett", "id": "<id>"}
+{"handling": "aktiv", "aktiv": false}
+```
+
+- `lagre` uten `id` lager et nytt punkt; med `id` endres bare feltene som sendes. Svaret er hele programmet.
+- Punktene kan ikke slå pumpen av eller på (`paa` avvises). Nye punkter lagres med pumpen på.
+- `aktiv: false` stopper hele programmet; pumpen blir da stående på innstillingen den har.
+- Bekreft med brukeren før du sletter punkter eller slår av programmet.
+
+`GET /api/varmepumpe/innlogging` sier om innlogging er lagt inn (`satt`, `bruker` maskert). En assistent skal
+ikke lagre eller endre innloggingen; det gjør brukeren på websiden.
+
 ### `GET /helse`
 
 `200 {"ok": true}` når Tibber og Zaptec svarer, ellers `503 {"ok": false}`.
@@ -184,6 +243,9 @@ Den totale elbilkostnaden er `elbil.totalt.sum + elbil.kapasitet_ekstra`.
 | Hvorfor lader den ikke? | `styring.handling` og `styring.grunn` |
 | Er bilen full? | `styring.ferdig` (ikke `null`), eller `lader.modus` 5 med `lader.final_stop` `false` |
 | Hva koster strømmen nå? | Raden i `priser` der `start <= nå < start + 3600`, feltet `din_pris` |
+| Hvor varmt er det inne/ute? | `varmepumpe.enheter[0].rom` og `varmepumpe.ute` |
+| Når senkes/økes temperaturen? | `varmepumpe.enheter[0].program.punkter` og `.neste` |
+| Hvor mye strøm bruker varmepumpen? | `varmepumpe.energi.idag_kwh`, og `timer[].vp` per time |
 | Er vi nær neste kapasitetstrinn? | `effektvarsel.niva`, `effektvarsel.prognose` mot `effektvarsel.grense` |
 | Hva blir strømregningen? | `/api/regning`: `inneverende.prognose.sum` |
 | Hva har elbilen kostet? | `/api/regning`: `elbil.totalt.sum + elbil.kapasitet_ekstra` |
@@ -192,4 +254,6 @@ Den totale elbilkostnaden er `elbil.totalt.sum + elbil.kapasitet_ekstra`.
 
 - **Bilen:** batterinivå er ikke kjent. Styringen bruker et fast antall ladetimer per natt.
 - **Laderen:** ladestrømmen i ampere kan ikke settes direkte, og det finnes ikke noe kWh-mål.
+- **Varmepumpen:** styres via MELCloud Home sitt uoffisielle API. Det kan være noen sekunders forsinkelse, og
+  romtemperaturen måles i innedelen (ofte høyt på veggen, så den viser gjerne mer enn i rommet).
 - **Faste innstillinger:** modus, avreisetid og normalt antall timer settes i `.env` og krever omstart.

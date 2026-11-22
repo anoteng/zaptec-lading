@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
-from . import avtale, elbil, regning, status, styring
+from . import avtale, elbil, regning, status, styring, varmepumpe
 from .db import DB
 from .tilstand import Tilstand
 
@@ -88,6 +88,54 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
         log.info("strømavtale/støtte lagret fra websiden (%s)", ut["kilde"])
         return web.json_response(ut)
 
+    async def api_vp_innlogging(_):
+        return web.json_response(varmepumpe.innlogging(cfg), headers={"Cache-Control": "no-store"})
+
+    async def api_vp_innlogging_lagre(req: web.Request):
+        # Passordet sendes hit fra skjemaet på websiden, lagres i .env og gis aldri tilbake.
+        if not ikke_csrf(req):
+            return web.json_response({"feil": "mangler X-Lading-header"}, status=403)
+        try:
+            d = await req.json()
+            if not isinstance(d, dict):
+                raise ValueError("forventet et JSON-objekt")
+            if d.get("fjern"):
+                ut = varmepumpe.fjern_innlogging(cfg)
+            else:
+                ut = await varmepumpe.lagre_innlogging(cfg, str(d.get("bruker") or ""), str(d.get("passord") or ""))
+        except (ValueError, TypeError) as e:
+            return web.json_response({"feil": str(e)}, status=400)
+        return web.json_response(ut, headers={"Cache-Control": "no-store"})
+
+    async def api_vp_styr(req: web.Request):
+        if not ikke_csrf(req):
+            return web.json_response({"feil": "mangler X-Lading-header"}, status=403)
+        try:
+            d = await req.json()
+            if not isinstance(d, dict):
+                raise ValueError("forventet et JSON-objekt")
+            enhet = d.pop("enhet", None)
+            ut = await varmepumpe.styr(enhet, d)
+        except (ValueError, TypeError) as e:
+            return web.json_response({"feil": str(e)}, status=400)
+        except RuntimeError as e:
+            return web.json_response({"feil": str(e)}, status=502)
+        return web.json_response(ut)
+
+    async def api_vp_program(req: web.Request):
+        if not ikke_csrf(req):
+            return web.json_response({"feil": "mangler X-Lading-header"}, status=403)
+        try:
+            d = await req.json()
+            if not isinstance(d, dict):
+                raise ValueError("forventet et JSON-objekt")
+            ut = await varmepumpe.program(d.pop("enhet", None), d)
+        except (ValueError, TypeError) as e:
+            return web.json_response({"feil": str(e)}, status=400)
+        except RuntimeError as e:
+            return web.json_response({"feil": str(e)}, status=502)
+        return web.json_response(ut)
+
     async def helse(_):
         k = tilstand.kilder
         ok = all(v.feil is None and v.sist_ok for v in (k["tibber"], k["zaptec"]))
@@ -100,6 +148,10 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
     app.router.add_post("/api/overstyring", api_overstyring)
     app.router.add_get("/api/innstillinger", api_innstillinger)
     app.router.add_post("/api/innstillinger", api_innstillinger_lagre)
+    app.router.add_get("/api/varmepumpe/innlogging", api_vp_innlogging)
+    app.router.add_post("/api/varmepumpe/innlogging", api_vp_innlogging_lagre)
+    app.router.add_post("/api/varmepumpe", api_vp_styr)
+    app.router.add_post("/api/varmepumpe/program", api_vp_program)
     app.router.add_get("/helse", helse)
     return app
 

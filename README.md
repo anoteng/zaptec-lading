@@ -48,6 +48,14 @@ Prioriteringene er, i rekkefølge:
   - Feilende kommandoer gir varsel. Det samme gjør en bil som ikke starter igjen etter pause (se [Varsler](#varsler)).
   - Etter for mange stopp i én tilkobling lader den på minimum i stedet for å pause.
 
+**Varmepumpe** (valgfritt, Mitsubishi med MELCloud Home)
+- Romtemperatur, utetemperatur og status, hentet hvert minutt.
+- Styring fra websiden: ønsket temperatur, modus, vifte og luftretning. Av/på krever bekreftelse, siden
+  kompressoren ikke bør startes og stoppes ofte.
+- Ukeprogrammet (f.eks. nattsenking) kan ses og endres på websiden. Det ligger i MELCloud og kjøres derfra.
+- Strømforbruket per time vises som egen del i diagrammet over de siste 48 timene. Det trekkes fra «huset ellers».
+- Innloggingen legges inn på websiden (se [Varmepumpe](#varmepumpe)).
+
 **Strømregning og elbilkostnad**
 - Regningen hittil i måneden og en prognose for hele måneden. Den er delt opp i strøm, Norgespris eller
   strømstønad, energiledd, kapasitetsledd og fastbeløp.
@@ -290,6 +298,30 @@ anslag for resten av måneden. Prognosen antar at elbilen pauses, siden effektva
   Timen spiser da av marginen for resten av måneden.
 - **Slå av:** `LADING_VARSEL_EFFEKT=false`. `LADING_VARSEL_LENKE` gir en adresse som åpnes når man trykker på varselet.
 
+## Varmepumpe
+
+Støtter luft-luft-varmepumper fra Mitsubishi som er koblet til **MELCloud Home**, appen fra 2024–25. Den eldre
+MELCloud-appen er ikke støttet. Tjenesten bruker [aiomelcloudhome](https://github.com/erwindouna/aiomelcloudhome),
+det samme biblioteket som Home Assistant bruker. Mitsubishi har ikke noe offisielt API, så dette kan slutte å
+virke hvis de endrer noe. Lading og strømovervåking påvirkes ikke av det.
+
+1. Åpne websiden og kortet **Varmepumpe**.
+2. Logg inn med e-post og passord fra MELCloud Home-appen og trykk **Koble til**.
+
+Innloggingen testes mot MELCloud Home før den lagres i `.env`. Passordet sendes aldri tilbake fra API-et.
+Feltene er merket slik at passordbehandleren på mobilen kan fylle dem ut, så du slipper å skrive passordet over
+SSH eller lime det inn i en chat. Når siden bare er tilgjengelig lokalt og via Cloudflare Access, er det bare du
+som kan legge inn eller endre innloggingen. Du kan også sette `MELCLOUD_USER` og `MELCLOUD_PASSWORD` i `.env`
+og starte tjenesten på nytt.
+
+**Ukeprogrammet** er det samme som i MELCloud Home-appen og kjøres av MELCloud, ikke av pumpen og ikke av
+denne tjenesten. Er internett eller MELCloud nede, blir programendringen ikke utført, og pumpen fortsetter med
+innstillingen den har. Hvert punkt setter temperatur og modus på valgte dager og klokkeslett.
+
+**Strømforbruket** kommer fra pumpens innebygde energimåler, i hele 100 Wh per time og med noen minutters
+forsinkelse. MELCloud Home gir bare timeverdier for det siste døgnet, så historikken bygges opp fra tjenesten
+først henter data. Pumper uten energimåler kan styres, men vises ikke i diagrammet.
+
 ## API
 
 | Sti | Innhold |
@@ -300,6 +332,9 @@ anslag for resten av måneden. Prognosen antar at elbilen pauses, siden effektva
 | `GET /api/innstillinger` | Strømavtale og støtteordning |
 | `POST /api/innstillinger` | Lagre strømavtale og støtteordning, eller `{"tilbakestill": true}` |
 | `POST /api/overstyring` | `{"type": "auto" \| "lad_naa" \| "pause" \| "timer", "timer": N}` |
+| `POST /api/varmepumpe` | Styr varmepumpen, f.eks. `{"temperatur": 21.5}` eller `{"paa": false}` |
+| `POST /api/varmepumpe/program` | Endre ukeprogrammet: lagre eller slette punkt, eller slå programmet av/på |
+| `GET/POST /api/varmepumpe/innlogging` | Om innlogging til MELCloud Home er lagt inn, eller lagre/fjern den |
 | `GET /helse` | 200 når Tibber og Zaptec svarer, ellers 503 (for overvåking) |
 
 POST krever `Content-Type: application/json` og headeren `X-Lading: 1`.
@@ -347,6 +382,8 @@ Databasen vokser med ca. 9 000 rader i døgnet, noen hundre MB i året.
 - Tariffen som følger med, er Elvias. Henting av timeverdier fra nettselskapet virker bare for Elvia.
 - Én lader og én bil.
 - Fasevakta ser på L1 og L3. Det er det måleren gir i IT-nett.
+- Varmepumpe: bare luft-luft i MELCloud Home, og websiden viser den første enheten. Varmepumpen styres bare
+  manuelt, ikke automatisk etter pris eller effekt.
 
 ## Kode
 
@@ -363,6 +400,7 @@ lading/
   plan.py       hvilke timer bilen skal lade
   styring.py    effektvakt, fasevakt, overstyring og utførelse
   effektvarsel.py  varsel når timen ligger an til å øke kapasitetstrinnet
+  varmepumpe.py MELCloud Home: status, styring og strømforbruk per time
   varsel.py     push-varsler via ntfy (python -m lading.varsel sender et testvarsel)
   avtale.py     strømavtale og støtteordning
   regning.py    strømregning, prognose og historikk

@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS lader (           -- Zaptec-status, hvert minutt
   strom_satt REAL, i1 REAL, i2 REAL, i3 REAL, final_stop INTEGER);
 CREATE TABLE IF NOT EXISTS time_lader (      -- laderens energi per klokketime (integrert effekt)
   time INTEGER PRIMARY KEY, kwh REAL);
+CREATE TABLE IF NOT EXISTS time_vp (         -- varmepumpens forbruk per klokketime fra MELCloud Home (100 Wh-oppløsning)
+  time INTEGER, enhet TEXT, kwh REAL, PRIMARY KEY (time, enhet));
 CREATE TABLE IF NOT EXISTS lader_maaler (    -- laderens signerte MID-måler
   ts INTEGER PRIMARY KEY, kwh REAL);
 CREATE TABLE IF NOT EXISTS pris (            -- spotpris eks. mva

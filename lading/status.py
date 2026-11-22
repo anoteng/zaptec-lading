@@ -36,6 +36,8 @@ def timeserie(db: DB, fra: int, til: int) -> dict[int, dict]:
                          "elvia": r["elvia"]}
     for r in db.alle("SELECT * FROM time_lader WHERE time >= ? AND time < ?", fra, til):
         ut.setdefault(r["time"], {"hus": None, "kilde": None})["lader"] = r["kwh"]
+    for r in db.alle("SELECT time, SUM(kwh) kwh FROM time_vp WHERE time >= ? AND time < ? GROUP BY time", fra, til):
+        ut.setdefault(r["time"], {"hus": None, "kilde": None})["vp"] = r["kwh"]
     return ut
 
 
@@ -130,7 +132,7 @@ def bygg(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
     timer = []
     for t in range(t48, time_av(ts) + 3600, 3600):
         v = serie.get(t, {})
-        timer.append({"start": t, "time": lokal(t).strftime("%H"), "hus": v.get("hus"), "lader": v.get("lader"),
+        timer.append({"start": t, "time": lokal(t).strftime("%H"), "hus": v.get("hus"), "lader": v.get("lader"), "vp": v.get("vp"),
                       "kilde": v.get("kilde"),
                       "lavtariff": tariff.energiledd(cfg, lokal(t))[1]})
     return {
@@ -146,5 +148,6 @@ def bygg(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
         "installasjon": tilstand.installasjon,
         "priser": priser(db, cfg, dognstart(idag), dognstart(idag + dt.timedelta(days=2))),
         "timer": timer,
+        "varmepumpe": tilstand.varmepumpe,
         "kilder": _kilder(tilstand),
     }

@@ -10,7 +10,8 @@ import tomllib
 from pathlib import Path
 
 ROT = Path(__file__).resolve().parent.parent
-HEMMELIGHETER = ("ZAPTEC_USER", "ZAPTEC_PASSWORD", "TIBBER_TOKEN", "ELVIA_METERVALUES_TOKEN", "NTFY_URL", "NTFY_TOKEN")
+HEMMELIGHETER = ("ZAPTEC_USER", "ZAPTEC_PASSWORD", "TIBBER_TOKEN", "ELVIA_METERVALUES_TOKEN", "NTFY_URL", "NTFY_TOKEN",
+                 "MELCLOUD_USER", "MELCLOUD_PASSWORD")
 PAAKREVD = (("hemmelig", "ZAPTEC_USER"), ("hemmelig", "ZAPTEC_PASSWORD"), ("hemmelig", "TIBBER_TOKEN"),
             ("tibber", "home_id"), ("zaptec", "installation_id"), ("zaptec", "charger_id"))
 
@@ -27,6 +28,32 @@ def les_env(sti: Path) -> dict[str, str]:
                     v = v[1:-1]
                 verdier[k.strip()] = v
     return verdier
+
+
+def skriv_env(endringer: dict[str, str | None], sti: Path | None = None):
+    """Sett eller fjern (None) nøkler i .env. Beholder resten av fila og kommentarene, og skriver atomisk
+    til en fil som bare eieren kan lese (chmod 600)."""
+    for k, v in endringer.items():
+        if v is not None and ("\n" in v or "\r" in v):
+            raise ValueError(f"{k}: linjeskift er ikke lov")
+    # les_env fjerner ett par ytre anførselstegn, så "…" rundt verdien gir den tilbake uendret.
+    nye = {k: f'"{v}"' for k, v in endringer.items() if v is not None}
+    sti = sti or ROT / ".env"
+    linjer = sti.read_text().splitlines() if sti.exists() else []
+    ut = []
+    for linje in linjer:
+        k = linje.split("=", 1)[0].strip() if "=" in linje and not linje.lstrip().startswith("#") else None
+        if k not in endringer:
+            ut.append(linje)
+        elif k in nye:  # første forekomst erstattes, eventuelle duplikater fjernes
+            ut.append(f"{k}={nye.pop(k)}")
+    ut += [f"{k}={v}" for k, v in nye.items()]
+    tmp = sti.with_name(sti.name + ".ny")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(ut) + "\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, sti)
 
 
 def _tolk(tekst: str, gammel):
