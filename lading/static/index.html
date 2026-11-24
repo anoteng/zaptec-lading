@@ -1016,7 +1016,7 @@ function tegnFukt(t) {
       (e.temp != null ? ` · ${nf(e.temp, 0)} °C` : "");
     if (e.type === "ukjent") { q(".fu-raa").textContent = Object.entries(e.raa || {}).map(([k, v]) => `${k}: ${v}`).join(" · "); return; }
     const ev = e.evner, maalAv = ev.maal && ev.maal.ikke_i_modus.includes(e.modus);
-    q(".fu-info").innerHTML = [e.paa ? `På: ${esc((ev.moduser[e.modus] || e.modus || "").toLowerCase())}` + (e.maal != null && !maalAv ? `, ønsket ${nf(e.maal, 0)} %` : "") : "Av",
+    q(".fu-info").innerHTML = [e.paa ? `På: ${esc((ev.moduser[e.modus] || e.modus || "").toLowerCase())}` + (e.maal != null && !maalAv ? `, ønsket ${nf(e.maal, 0)} %` : maalAv ? " (ønsket luftfuktighet brukes ikke i denne modusen)" : "") : "Av",
       e.niva && ev.nivaer[e.niva] ? `${esc(ev.niva_navn.toLowerCase())} ${esc(ev.nivaer[e.niva].toLowerCase())}` : "",
       e.filter != null ? `filter ${nf(e.filter, 0)} %` : "",
       ...(e.varsler || []).map(v => `<span class="err">${esc(v[0].toUpperCase() + v.slice(1))}</span>`)].filter(Boolean).join(" · ");
@@ -1025,7 +1025,7 @@ function tegnFukt(t) {
     b.querySelectorAll('[data-fu="bryter"]').forEach(x => x.classList.toggle("valgt", !!(e.brytere || {})[x.dataset.v]));
     if (ev.maal) {
       if (Date.now() > (fuHoldTil[e.id] || 0)) fuMaal[e.id] = e.maal;
-      q(".fu-maal").textContent = maalAv ? "auto" : fuMaal[e.id] == null ? "–" : `${nf(fuMaal[e.id], 0)} %`;
+      q(".fu-maal").textContent = maalAv ? "–" : fuMaal[e.id] == null ? "–" : `${nf(fuMaal[e.id], 0)} %`;
       b.querySelectorAll('[data-fu="maal"]').forEach(x => x.disabled = maalAv);
     }
     const sel = q('[data-fu="niva"]');
