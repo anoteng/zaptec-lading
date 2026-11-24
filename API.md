@@ -248,11 +248,12 @@ Apparatene styres lokalt på hjemmenettet (Tuya-protokollen), uten sky. Status s
 Send bare det som skal endres:
 
 ```json
-{"enhet": "<id>", "maal": 45, "modus": "manual", "niva": "level_2", "varme": false}
+{"enhet": "<id>", "maal": 45, "modus": "humidity", "niva": "level_2", "varme": false}
 ```
 
 - `maal`: innenfor `evner.maal`, i hele steg (`steg`, typisk 5 %). Kan ikke settes når `modus` står i
-  `evner.maal.ikke_i_modus` (Wilfa i auto styrer selv).
+  `evner.maal.ikke_i_modus`. Wilfaen bruker ønsket luftfuktighet bare i `humidity` (konstant fuktighet);
+  i `manual` går den på fast tåkenivå, og i `auto` styrer den selv.
 - `modus` og `niva`: en av nøklene i `evner.moduser` og `evner.nivaer`.
 - Brytere: navnet fra `evner.brytere` med `true` eller `false`.
 - `paa`: **Slå aldri avfukteren (`evner.kompressor: true`) av eller på uten at brukeren uttrykkelig ber om det.**

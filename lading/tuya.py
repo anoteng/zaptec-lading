@@ -43,8 +43,8 @@ PROFILER = {
     "7naqdm8whbezn28v": {
         "type": "luftfukter", "modell": "Wilfa Haze HU-400BC",
         "paa": 1, "fukt": 14, "temp": 10,
-        "maal": {"dp": 13, "min": 30, "maks": 90, "steg": 5, "ikke_i_modus": ["auto"]},
-        "modus": {"dp": 24, "valg": {"manual": "Manuell", "auto": "Auto"}},
+        "maal": {"dp": 13, "min": 30, "maks": 90, "steg": 5, "ikke_i_modus": ["auto", "manual"]},
+        "modus": {"dp": 24, "valg": {"humidity": "Konstant fuktighet", "manual": "Manuell", "auto": "Auto"}},
         "niva": {"dp": 23, "navn": "Tåke", "valg": {f"level_{i}": str(i) for i in range(1, 6)}},
         "brytere": {"varme": (26, "Varme"), "ionisator": (35, "Ionisator"), "lys": (5, "Stemningslys"), "lyd": (8, "Lyd")},
         "feil": {"dp": 22, "bits": {1: "tanken er tom"}},
