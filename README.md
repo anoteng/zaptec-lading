@@ -330,6 +330,30 @@ innstillingen den har. Hvert punkt setter temperatur og modus på valgte dager o
 forsinkelse. MELCloud Home gir bare timeverdier for det siste døgnet, så historikken bygges opp fra tjenesten
 først henter data. Pumper uten energimåler kan styres, men vises ikke i diagrammet.
 
+## Luftfukter og luftavfukter (Smart Life / Tuya)
+
+Mange luftfuktere og avfuktere (Wilfa, Jula/Anslut, Clas Ohlson m.fl.) er Tuya-apparater. Tjenesten styrer dem
+**lokalt på hjemmenettet** med [tinytuya](https://github.com/jasonacox/tinytuya), uten sky. Kjente modeller:
+Wilfa Haze HU-400BC (luftfukter) og Anslut avfukter 20 l. Andre Tuya-apparater vises med rådata, men kan ikke
+styres. Datapunktene for modellene er hentet fra [tuya-local](https://github.com/make-all/tuya-local); flere
+modeller kan legges til i `PROFILER` i `lading/tuya.py`.
+
+Lokal styring krever en nøkkel per apparat, som bare finnes i Tuyas sky. Den hentes én gang:
+
+1. Legg apparatene i appen **Smart Life**. Wilfas egen app (WiLife) gir ikke tilgang, så Wilfa-apparater må
+   fjernes der og legges til på nytt i Smart Life.
+2. Finn brukerkoden i Smart Life: **Meg → ⚙ → Konto og sikkerhet → Brukerkode**.
+3. Lim den inn under **Luftfukting** på websiden og trykk **Vis QR-kode**.
+4. Skann QR-koden med Smart Life (skanneren øverst til høyre) og godkjenn.
+
+Tjenesten henter apparatlista og nøklene, logger ut av skyen igjen og leter etter apparatene på nettet (ca. 20 s).
+Nøklene lagres i `.env` (`TUYA_NOKLER`), resten i databasen. Innloggingen bruker samme mekanisme og klient-ID
+som Tuya-integrasjonen i Home Assistant. Pares et apparat på nytt, får det ny nøkkel; gjør da innloggingen om igjen.
+
+Status hentes hvert 30. sekund. Bytter et apparat IP-adresse, finner tjenesten det igjen ved å lytte etter
+kringkastingene apparatene sender (UDP 6666/6667 på hjemmenettet). Luftfuktighet og temperatur lagres som
+timesnitt (`time_fukt`).
+
 ## API
 
 | Sti | Innhold |
@@ -343,6 +367,8 @@ først henter data. Pumper uten energimåler kan styres, men vises ikke i diagra
 | `POST /api/varmepumpe` | Styr varmepumpen, f.eks. `{"temperatur": 21.5}` eller `{"paa": false}` |
 | `POST /api/varmepumpe/program` | Endre ukeprogrammet: lagre eller slette punkt, eller slå programmet av/på |
 | `GET/POST /api/varmepumpe/innlogging` | Om innlogging til MELCloud Home er lagt inn, eller lagre/fjern den |
+| `POST /api/tuya` | Styr luftfukter/avfukter, f.eks. `{"enhet": "<id>", "maal": 45}` |
+| `GET/POST /api/tuya/innlogging` | Hvilke apparater som er koblet til, eller start innlogging med Smart Life / fjern |
 | `GET /helse` | 200 når Tibber og Zaptec svarer, ellers 503 (for overvåking) |
 
 POST krever `Content-Type: application/json` og headeren `X-Lading: 1`.
@@ -392,6 +418,7 @@ Databasen vokser med ca. 9 000 rader i døgnet, noen hundre MB i året.
 - Fasevakta ser på L1 og L3. Det er det måleren gir i IT-nett.
 - Varmepumpe: bare luft-luft i MELCloud Home, og websiden viser den første enheten. Varmepumpen styres bare
   manuelt, ikke automatisk etter pris eller effekt.
+- Luftfukter/avfukter: bare de kjente modellene kan styres, og strømforbruket deres måles ikke.
 
 ## Kode
 
@@ -409,6 +436,7 @@ lading/
   styring.py    effektvakt, fasevakt, overstyring og utførelse
   effektvarsel.py  varsel når timen ligger an til å øke kapasitetstrinnet
   varmepumpe.py MELCloud Home: status, styring og strømforbruk per time
+  tuya.py       luftfukter og avfukter lokalt (Tuya/Smart Life)
   klima.py      utetemperatur, vedfyring, graddager, temperaturmodell og værvarsel
   varsel.py     push-varsler via ntfy (python -m lading.varsel sender et testvarsel)
   avtale.py     strømavtale og støtteordning

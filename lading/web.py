@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
-from . import avtale, elbil, regning, status, styring, varmepumpe
+from . import avtale, elbil, regning, status, styring, tuya, varmepumpe
 from .db import DB
 from .tilstand import Tilstand
 
@@ -136,6 +136,41 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
             return web.json_response({"feil": str(e)}, status=502)
         return web.json_response(ut)
 
+    async def api_tuya_innlogging(_):
+        try:
+            ut = await tuya.sjekk_innlogging()
+        except ValueError as e:
+            return web.json_response({"feil": str(e)}, status=503)
+        return web.json_response(ut, headers={"Cache-Control": "no-store"})
+
+    async def api_tuya_innlogging_start(req: web.Request):
+        if not ikke_csrf(req):
+            return web.json_response({"feil": "mangler X-Lading-header"}, status=403)
+        try:
+            d = await req.json()
+            if not isinstance(d, dict):
+                raise ValueError("forventet et JSON-objekt")
+            ut = tuya.fjern() if d.get("fjern") else await tuya.start_innlogging(str(d.get("brukerkode") or ""))
+        except (ValueError, TypeError) as e:
+            return web.json_response({"feil": str(e)}, status=400)
+        except RuntimeError as e:
+            return web.json_response({"feil": str(e)}, status=502)
+        return web.json_response(ut, headers={"Cache-Control": "no-store"})
+
+    async def api_tuya_styr(req: web.Request):
+        if not ikke_csrf(req):
+            return web.json_response({"feil": "mangler X-Lading-header"}, status=403)
+        try:
+            d = await req.json()
+            if not isinstance(d, dict):
+                raise ValueError("forventet et JSON-objekt")
+            ut = await tuya.styr(d.pop("enhet", None), d)
+        except (ValueError, TypeError) as e:
+            return web.json_response({"feil": str(e)}, status=400)
+        except RuntimeError as e:
+            return web.json_response({"feil": str(e)}, status=502)
+        return web.json_response(ut)
+
     async def helse(_):
         k = tilstand.kilder
         ok = all(v.feil is None and v.sist_ok for v in (k["tibber"], k["zaptec"]))
@@ -152,6 +187,9 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
     app.router.add_post("/api/varmepumpe/innlogging", api_vp_innlogging_lagre)
     app.router.add_post("/api/varmepumpe", api_vp_styr)
     app.router.add_post("/api/varmepumpe/program", api_vp_program)
+    app.router.add_get("/api/tuya/innlogging", api_tuya_innlogging)
+    app.router.add_post("/api/tuya/innlogging", api_tuya_innlogging_start)
+    app.router.add_post("/api/tuya", api_tuya_styr)
     app.router.add_get("/helse", helse)
     return app
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROT = Path(__file__).resolve().parent.parent
 HEMMELIGHETER = ("ZAPTEC_USER", "ZAPTEC_PASSWORD", "TIBBER_TOKEN", "ELVIA_METERVALUES_TOKEN", "NTFY_URL", "NTFY_TOKEN",
-                 "MELCLOUD_USER", "MELCLOUD_PASSWORD")
+                 "MELCLOUD_USER", "MELCLOUD_PASSWORD", "TUYA_NOKLER")
 PAAKREVD = (("hemmelig", "ZAPTEC_USER"), ("hemmelig", "ZAPTEC_PASSWORD"), ("hemmelig", "TIBBER_TOKEN"),
             ("tibber", "home_id"), ("zaptec", "installation_id"), ("zaptec", "charger_id"))
 

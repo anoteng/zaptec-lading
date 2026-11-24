@@ -34,10 +34,11 @@ class Tilstand:
     styring: dict | None = None        # siste beslutning fra styringen
     effektvarsel: dict | None = None   # siste vurdering av om timen øker kapasitetstrinnet
     varmepumpe: dict | None = None     # siste status fra MELCloud Home
+    tuya: dict | None = None           # siste status fra luftfukter/avfukter (Tuya, lokalt)
     oppfrisk: asyncio.Event = field(default_factory=asyncio.Event)  # be Zaptec-løkka hente status nå
     styr_naa: asyncio.Event = field(default_factory=asyncio.Event)  # be styringen regne på nytt nå
     kilder: dict[str, Kilde] = field(default_factory=lambda: {
-        k: Kilde() for k in ("tibber", "zaptec", "priser", "elvia", "varmepumpe", "vaer")})
+        k: Kilde() for k in ("tibber", "zaptec", "priser", "elvia", "varmepumpe", "tuya", "vaer")})
 
 
 async def sov_med_backoff(forsok: int, minst: float = 10, maks: float = 600):

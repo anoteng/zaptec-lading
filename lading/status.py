@@ -3,7 +3,7 @@ import datetime as dt
 import math
 import time
 
-from . import klima, tariff
+from . import klima, tariff, tuya
 from .avtale import kwh_pris, ordning
 from .db import DB
 from .tid import dognstart, lokal, maanedstart, naa, time_av
@@ -150,5 +150,6 @@ def bygg(db: DB, cfg: dict, tilstand: Tilstand) -> dict:
         "priser": priser(db, cfg, dognstart(idag), dognstart(idag + dt.timedelta(days=2))),
         "timer": timer,
         "varmepumpe": tilstand.varmepumpe,
+        "tuya": {**tilstand.tuya, "historikk": tuya.historikk(db, time_av(ts) + 3600)} if tilstand.tuya else None,
         "kilder": _kilder(tilstand),
     }

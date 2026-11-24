@@ -265,6 +265,39 @@ td .forkl { display: block; color: var(--muted); font-size: 12px; }
   </section>
 
   <section class="grid">
+    <div class="card wide" id="fu">
+      <h2>Luftfukting</h2>
+      <div id="fu-enheter"></div>
+      <div id="fu-graf" hidden>
+        <div class="label" style="margin:12px 0 8px">Luftfuktighet siste 48 timer, %</div>
+        <div class="legend" id="fu-leg"></div>
+        <div id="chart-fukt"></div>
+        <details><summary>Vis som tabell</summary><div class="rediger-wrap" id="tab-fukt"></div></details>
+      </div>
+      <div class="sub" id="fu-naa">laster …</div>
+      <details id="fu-detaljer"><summary id="fu-summary">Koble til Smart Life</summary>
+        <ol style="margin:8px 0;padding-left:20px">
+          <li>Legg apparatene i <b>Smart Life</b>-appen (Wilfa-apparater må fjernes fra WiLife og legges til på nytt der).</li>
+          <li>Finn brukerkoden i Smart Life: Meg → ⚙ → Konto og sikkerhet → Brukerkode, og lim den inn her.</li>
+          <li>Skann QR-koden som vises, med Smart Life (skanneren øverst til høyre på Hjem). Åpne denne siden på en annen
+            skjerm enn telefonen, eller ta skjermbilde og velg det fra albumet i skanneren.</li>
+        </ol>
+        <p class="sub" style="margin:8px 0">Tjenesten henter nøklene til apparatene én gang, logger ut av skyen igjen og styrer
+          dem deretter direkte på hjemmenettet. Nøklene lagres på serveren (i <code>.env</code>).</p>
+        <form id="fu-skjema" autocomplete="off">
+          <label class="felt">Brukerkode <input type="text" id="fu-kode" spellcheck="false" style="max-width:320px;display:block;margin-top:4px" required></label>
+          <div class="knapper">
+            <button type="submit" class="valgt" id="fu-start">Vis QR-kode</button>
+            <button type="button" id="fu-fjern" hidden>Fjern apparater og nøkler</button>
+            <span id="fu-status" class="sub"></span>
+          </div>
+        </form>
+        <div id="fu-qr" hidden style="margin-top:8px"></div>
+      </details>
+    </div>
+  </section>
+
+  <section class="grid">
     <div class="card"><h2>Månedens døgnmakser</h2><div id="maaned"></div></div>
     <div class="card"><h2>Lader</h2><div id="lader-detaljer"></div></div>
     <div class="card"><h2>Fasestrøm</h2><div id="faser"></div></div>
@@ -460,9 +493,10 @@ function tegn(d) {
 
   tegnStyring(d.styring);
   tegnVarmepumpe(d.varmepumpe);
+  tegnFukt(d.tuya);
 
   // Kilder
-  const NAVN = { tibber: "Tibber Pulse", zaptec: "Zaptec", priser: "Spotpriser", elvia: "Elvia", varmepumpe: "Varmepumpe" };
+  const NAVN = { tibber: "Tibber Pulse", zaptec: "Zaptec", priser: "Spotpriser", elvia: "Elvia", varmepumpe: "Varmepumpe", tuya: "Luftfukting (lokalt)", vaer: "Værvarsel" };
   $("kilder").innerHTML = tabell([
     { t: "Kilde", v: ([k, v]) => `<span style="display:inline-flex;align-items:center;gap:6px"><i class="dot" style="background:${v.feil ? "var(--crit)" : v.sist_ok ? "var(--good)" : "var(--muted)"}"></i>${NAVN[k]}</span>` },
     { t: "Sist OK", v: ([k, v]) => siden(v.sist_ok) + (v.info ? `<br><span class="muted">${esc(v.info)}</span>` : "") + (v.feil ? `<br><span class="err">${esc(v.feil)}</span>` : "") }],
@@ -944,6 +978,179 @@ $("vp-fjern").addEventListener("click", () => {
 });
 fetch("api/varmepumpe/innlogging", { cache: "no-store" }).then(r => r.json()).then(tegnVp)
   .catch(e => { $("vp-naa").innerHTML = `<span class="err">Klarte ikke å hente status (${esc(e.message)})</span>`; });
+
+// Luftfukter og avfukter (Tuya, lokalt på hjemmenettet)
+const FU_TYPE = { luftfukter: "luftfukter", avfukter: "luftavfukter", ukjent: "ukjent apparat" };
+const FU_FARGE = ["var(--s1)", "var(--s3)", "var(--s2)"];
+let fu = {}, fuMaal = {}, fuTidsur = {}, fuHoldTil = {};
+function fuBlokk(e) {
+  const ev = e.evner || {};
+  return `<div class="fu-enhet" data-id="${esc(e.id)}" style="padding:10px 0;border-bottom:1px solid var(--grid)">
+    <div><b>${esc(e.navn)}</b> <span class="muted">${esc(e.modell || FU_TYPE[e.type] || "")}</span> <span class="fu-online muted"></span></div>
+    <div class="big fu-tall" style="font-size:22px">–</div><div class="sub fu-info"></div>
+    ${e.type === "ukjent" ? `<div class="sub fu-raa"></div>` : `
+    <div class="knapper">
+      <button type="button" data-fu="paa">Slå på</button>
+      ${Object.entries(ev.moduser || {}).map(([k, t]) => `<button type="button" data-fu="modus" data-v="${esc(k)}">${esc(t)}</button>`).join("")}
+    </div>
+    <div class="knapper">
+      ${ev.maal ? `<span style="display:inline-flex;gap:6px;align-items:center">Ønsket
+        <button type="button" data-fu="maal" data-v="-1" aria-label="Lavere luftfuktighet">−</button>
+        <b class="fu-maal" style="min-width:52px;text-align:center">–</b>
+        <button type="button" data-fu="maal" data-v="1" aria-label="Høyere luftfuktighet">+</button></span>` : ""}
+      ${Object.keys(ev.nivaer || {}).length ? `<label>${esc(ev.niva_navn || "Nivå")} <select data-fu="niva">${Object.entries(ev.nivaer).map(([k, t]) => `<option value="${esc(k)}">${esc(t)}</option>`).join("")}</select></label>` : ""}
+      ${Object.entries(ev.brytere || {}).map(([k, t]) => `<button type="button" data-fu="bryter" data-v="${esc(k)}">${esc(t)}</button>`).join("")}
+      <span class="sub fu-styr-status"></span>
+    </div>`}</div>`;
+}
+function tegnFukt(t) {
+  const enh = (t && t.enheter) || [];
+  const boks = $("fu-enheter");
+  const sign = enh.map(e => e.id + JSON.stringify(e.evner || {})).join("|");
+  if (boks.dataset.sign !== sign) { boks.innerHTML = enh.map(fuBlokk).join(""); boks.dataset.sign = sign; }
+  fu = Object.fromEntries(enh.map(e => [e.id, e]));
+  enh.forEach(e => {
+    const b = boks.querySelector(`.fu-enhet[data-id="${CSS.escape(e.id)}"]`), q = s => b.querySelector(s);
+    q(".fu-online").innerHTML = e.online ? "" : `<span class="err">svarer ikke (sist ${esc(siden(e.sist_ok))})</span>`;
+    q(".fu-tall").innerHTML = (e.fukt != null ? `${nf(e.fukt, 0)} % <small>luftfuktighet</small>` : "–") +
+      (e.temp != null ? ` · ${nf(e.temp, 0)} °C` : "");
+    if (e.type === "ukjent") { q(".fu-raa").textContent = Object.entries(e.raa || {}).map(([k, v]) => `${k}: ${v}`).join(" · "); return; }
+    const ev = e.evner, maalAv = ev.maal && ev.maal.ikke_i_modus.includes(e.modus);
+    q(".fu-info").innerHTML = [e.paa ? `På: ${esc((ev.moduser[e.modus] || e.modus || "").toLowerCase())}` + (e.maal != null && !maalAv ? `, ønsket ${nf(e.maal, 0)} %` : "") : "Av",
+      e.niva && ev.nivaer[e.niva] ? `${esc(ev.niva_navn.toLowerCase())} ${esc(ev.nivaer[e.niva].toLowerCase())}` : "",
+      e.filter != null ? `filter ${nf(e.filter, 0)} %` : "",
+      ...(e.varsler || []).map(v => `<span class="err">${esc(v[0].toUpperCase() + v.slice(1))}</span>`)].filter(Boolean).join(" · ");
+    const paa = q('[data-fu="paa"]'); paa.textContent = e.paa ? "Slå av" : "Slå på"; paa.classList.toggle("valgt", !!e.paa);
+    b.querySelectorAll('[data-fu="modus"]').forEach(x => x.classList.toggle("valgt", x.dataset.v === e.modus));
+    b.querySelectorAll('[data-fu="bryter"]').forEach(x => x.classList.toggle("valgt", !!(e.brytere || {})[x.dataset.v]));
+    if (ev.maal) {
+      if (Date.now() > (fuHoldTil[e.id] || 0)) fuMaal[e.id] = e.maal;
+      q(".fu-maal").textContent = maalAv ? "auto" : fuMaal[e.id] == null ? "–" : `${nf(fuMaal[e.id], 0)} %`;
+      b.querySelectorAll('[data-fu="maal"]').forEach(x => x.disabled = maalAv);
+    }
+    const sel = q('[data-fu="niva"]');
+    if (sel && document.activeElement !== sel) sel.value = e.niva ?? "";
+  });
+  $("fu-naa").textContent = enh.length ? "" : "Ingen apparater koblet til ennå.";
+  if (enh.length) $("fu-summary").textContent = "Koble til på nytt (nye apparater eller nye nøkler)";
+  tegnFuktGraf(enh, (t && t.historikk) || {});
+}
+function tegnFuktGraf(enh, hist) {
+  const serier = enh.map((e, i) => ({ e, farge: FU_FARGE[i % FU_FARGE.length], p: (hist[e.id] || []).filter(r => r[1] != null) }))
+    .filter(s => s.p.length > 1).slice(0, 3);
+  $("fu-graf").hidden = !serier.length;
+  if (!serier.length) return;
+  const tider = [...new Set(serier.flatMap(s => s.p.map(r => r[0])))].sort((a, b) => a - b);
+  const el = $("chart-fukt"), W = Math.max(320, el.clientWidth || 600), H = 200, P = { l: 38, r: 10, t: 10, b: 24 };
+  const alle = serier.flatMap(s => s.p.map(r => r[1]));
+  const ys = pent(Math.max(0, Math.min(...alle) - 3), Math.min(100, Math.max(...alle) + 3), 5);
+  const t0 = tider[0], t1 = Math.max(tider.at(-1), t0 + 3600);
+  const x = t => P.l + (t - t0) / (t1 - t0) * (W - P.l - P.r), y = v => P.t + (1 - (v - ys.lo) / (ys.hi - ys.lo)) * (H - P.t - P.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Luftfuktighet siste 48 timer">`;
+  for (let v = ys.lo; v <= ys.hi + 1e-9; v += ys.steg)
+    s += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end">${nf(v, 0)}</text>`;
+  tider.forEach(t => { const h = new Date(t * 1000).getHours();
+    if (h % 6 === 0) s += `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${String(h).padStart(2, "0")}</text>`; });
+  serier.forEach(se => {
+    // Brudd i linja der det mangler timer.
+    let d = "", forrige = null;
+    se.p.forEach(r => { d += `${forrige != null && r[0] - forrige > 3600 ? "M" : d ? "L" : "M"}${x(r[0]).toFixed(1)},${y(r[1]).toFixed(1)}`; forrige = r[0]; });
+    s += `<path d="${d}" fill="none" stroke="${se.farge}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  });
+  s += `<line id="fu-kryss" x1="0" x2="0" y1="${P.t}" y2="${H - P.b}" stroke="var(--ink-2)" stroke-dasharray="2 3" visibility="hidden"/>`;
+  s += `<rect id="fu-hit" x="${P.l}" y="${P.t}" width="${W - P.l - P.r}" height="${H - P.t - P.b}" fill="transparent"/>`;
+  el.innerHTML = s + "</svg>";
+  $("fu-leg").innerHTML = serier.map(se => `<span><i class="sw" style="height:0;border-top:2px solid ${se.farge};width:14px;border-radius:0"></i>${esc(se.e.navn)}</span>`).join("");
+  const svg = el.querySelector("svg"), kryss = $("fu-kryss");
+  const tid = t => new Date(t * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  $("fu-hit").addEventListener("mousemove", ev => {
+    const r = svg.getBoundingClientRect(), mx = (ev.clientX - r.left) * W / r.width;
+    const t = tider.reduce((a, b) => Math.abs(x(b) - mx) < Math.abs(x(a) - mx) ? b : a);
+    kryss.setAttribute("x1", x(t)); kryss.setAttribute("x2", x(t)); kryss.setAttribute("visibility", "visible");
+    visTip(ev, `<b>${tid(t)}</b>` + serier.map(se => { const p = se.p.find(q => q[0] === t);
+      return `<br><i class="sw" style="height:0;border-top:2px solid ${se.farge};width:10px"></i> ${esc(se.e.navn)}: ` +
+        (p ? `${nf(p[1], 0)} %` + (p[2] != null ? `, ${nf(p[2], 0)} °C` : "") + (p[3] != null && p[3] < 1 ? `, på ${nf(p[3] * 100, 0)} % av timen` : "") : "–"); }).join(""));
+  });
+  $("fu-hit").addEventListener("mouseleave", () => { kryss.setAttribute("visibility", "hidden"); skjulTip(); });
+  $("tab-fukt").innerHTML = tabell([{ t: "Time", v: t => tid(t) },
+    ...serier.map(se => ({ t: `${esc(se.e.navn)} %`, n: 1, v: t => { const p = se.p.find(q => q[0] === t); return p ? nf(p[1], 0) : "–"; } })),
+    ...serier.map(se => ({ t: `${esc(se.e.navn)} °C`, n: 1, v: t => { const p = se.p.find(q => q[0] === t); return p && p[2] != null ? nf(p[2], 0) : "–"; } }))],
+    [...tider].reverse());
+}
+async function fuStyr(id, body) {
+  const b = $("fu-enheter").querySelector(`.fu-enhet[data-id="${CSS.escape(id)}"] .fu-styr-status`);
+  b.className = "sub fu-styr-status"; b.textContent = "Sender …";
+  try {
+    const r = await fetch("api/tuya", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" },
+      body: JSON.stringify({ enhet: id, ...body }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.feil || "HTTP " + r.status);
+    b.className = "status-ok fu-styr-status"; b.textContent = "Sendt.";
+    setTimeout(() => { if (b.textContent === "Sendt.") b.textContent = ""; }, 4000);
+    oppdater(); setTimeout(oppdater, 4000);
+  } catch (e) { b.className = "err fu-styr-status"; b.textContent = `Ble ikke sendt: ${e.message}`; }
+}
+$("fu-enheter").addEventListener("click", ev => {
+  const k = ev.target.closest("button[data-fu]"); if (!k) return;
+  const id = k.closest(".fu-enhet").dataset.id, e = fu[id]; if (!e) return;
+  const f = k.dataset.fu, v = k.dataset.v;
+  if (f === "paa") {
+    // Avfukteren har kompressor: av/på bare med bekreftelse.
+    const tekst = e.paa ? `Slå AV ${e.navn}?` + (e.evner.kompressor ? " Den har kompressor og bør helst styres med ønsket luftfuktighet." : "")
+                        : `Slå PÅ ${e.navn}?`;
+    if (confirm(tekst)) fuStyr(id, { paa: !e.paa });
+  } else if (f === "modus") { if (v !== e.modus) fuStyr(id, { modus: v }); }
+  else if (f === "bryter") fuStyr(id, { [v]: !(e.brytere || {})[v] });
+  else if (f === "maal") {
+    const m = e.evner.maal; if (fuMaal[id] == null) return;
+    fuMaal[id] = Math.min(m.maks, Math.max(m.min, fuMaal[id] + Number(v) * m.steg));
+    k.closest(".fu-enhet").querySelector(".fu-maal").textContent = `${nf(fuMaal[id], 0)} %`;
+    fuHoldTil[id] = Date.now() + 8000;
+    clearTimeout(fuTidsur[id]);
+    fuTidsur[id] = setTimeout(() => fuStyr(id, { maal: fuMaal[id] }), 1200);
+  }
+});
+$("fu-enheter").addEventListener("change", ev => {
+  const s = ev.target.closest('select[data-fu="niva"]'); if (!s) return;
+  fuStyr(s.closest(".fu-enhet").dataset.id, { niva: s.value });
+});
+
+// Smart Life-innlogging: brukerkode → QR-kode → skann i appen → nøkler hentes én gang.
+let fuPoll = null;
+function fuStatus(html, cls = "sub") { $("fu-status").className = cls; $("fu-status").innerHTML = html; }
+function tegnFuInnlogging(d) {
+  const enh = (d.enheter || []).map(e => `${esc(e.navn || e.id)}` + (e.modell ? ` (${esc(e.modell)})` : "") + (e.ip ? "" : " – ikke funnet på nettet")).join(", ");
+  if (!$("fu-enheter").innerHTML) $("fu-naa").innerHTML = d.satt ? `Koblet til: ${enh}` : "Ikke koblet til. Følg stegene under.";
+  $("fu-fjern").hidden = !d.satt;
+  if (!d.satt && !d.venter) $("fu-detaljer").open = true;
+  $("fu-qr").hidden = !d.venter;
+  if (d.venter) {
+    $("fu-qr").innerHTML = d.venter.qr + `<p class="sub" style="margin:6px 0 0">Skann med Smart Life og godkjenn. Venter …</p>`;
+    clearTimeout(fuPoll); fuPoll = setTimeout(sjekkFuInnlogging, 3000);
+  }
+  if (d.feil) fuStatus(esc(d.feil), "err");
+  if (d.ferdig) { fuStatus(`Ferdig: ${d.enheter.length} apparater hentet.`, "status-ok"); $("fu-detaljer").open = false; oppdater(); }
+}
+async function sjekkFuInnlogging() {
+  try { const r = await fetch("api/tuya/innlogging", { cache: "no-store" }); tegnFuInnlogging(await r.json()); }
+  catch (e) { fuStatus(`Klarte ikke å hente status (${esc(e.message)})`, "err"); }
+}
+async function fuPost(body, venter) {
+  fuStatus(venter); $("fu-start").disabled = true;
+  try {
+    const r = await fetch("api/tuya/innlogging", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.feil || "HTTP " + r.status);
+    fuStatus(body.fjern ? "Apparater og nøkler er fjernet." : ""); tegnFuInnlogging(d);
+    if (body.fjern) oppdater();
+  } catch (e) { fuStatus(esc(e.message), "err"); }
+  finally { $("fu-start").disabled = false; }
+}
+$("fu-skjema").addEventListener("submit", e => { e.preventDefault(); fuPost({ brukerkode: $("fu-kode").value }, "Henter QR-kode …"); });
+$("fu-fjern").addEventListener("click", () => {
+  if (confirm("Fjerne alle apparatene og nøklene fra serveren?")) fuPost({ fjern: true }, "Fjerner …");
+});
+sjekkFuInnlogging();
 
 let sistRegning = null;
 async function oppdaterRegning() {

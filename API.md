@@ -228,6 +228,40 @@ med lav temperatur om kvelden og et med vanlig temperatur om morgenen.
 `GET /api/varmepumpe/innlogging` sier om innlogging er lagt inn (`satt`, `bruker` maskert). En assistent skal
 ikke lagre eller endre innloggingen; det gjør brukeren på websiden.
 
+### `POST /api/tuya`: luftfukter og luftavfukter
+
+Apparatene styres lokalt på hjemmenettet (Tuya-protokollen), uten sky. Status står i `/api/status` under
+`tuya` (`null` når ingen apparater er koblet til):
+
+| Felt | Betydning |
+|---|---|
+| `enheter[]` | Ett per apparat: `id`, `navn`, `type` (`luftfukter`, `avfukter` eller `ukjent`), `modell`, `online`, `sist_ok` |
+| `enheter[].fukt`, `.temp` | Målt luftfuktighet (%) og temperatur (°C) der apparatet står |
+| `enheter[].paa`, `.modus`, `.maal`, `.niva` | Av/på, modus, ønsket luftfuktighet (%) og tåke-/viftenivå |
+| `enheter[].brytere` | Tilleggsfunksjoner, f.eks. `varme`, `ionisator`, `lys`, `lyd` eller `barnesikring` (`true`/`false`) |
+| `enheter[].varsler` | Tekster som «tanken er tom», «tanken er full» eller «filteret må rengjøres». Tom liste når alt er i orden |
+| `enheter[].filter` | Gjenstående filterlevetid i % (bare avfukteren) |
+| `enheter[].evner` | `maal` (`min`, `maks`, `steg`, `ikke_i_modus`), `moduser` og `nivaer` (verdi → visningsnavn), `niva_navn`, `brytere`, `kompressor` |
+| `enheter[].raa` | Bare for ukjente modeller: rådata, kan ikke styres |
+| `historikk` | `{id: [[time, fukt, temp, andel på], …]}`: timesnitt de siste 48 timene, `time` er UTC-start på timen |
+
+Send bare det som skal endres:
+
+```json
+{"enhet": "<id>", "maal": 45, "modus": "humidity", "niva": "level_2", "varme": false}
+```
+
+- `maal`: innenfor `evner.maal`, i hele steg (`steg`, typisk 5 %). Kan ikke settes når `modus` står i
+  `evner.maal.ikke_i_modus` (Wilfa i auto styrer selv).
+- `modus` og `niva`: en av nøklene i `evner.moduser` og `evner.nivaer`.
+- Brytere: navnet fra `evner.brytere` med `true` eller `false`.
+- `paa`: **Slå aldri avfukteren (`evner.kompressor: true`) av eller på uten at brukeren uttrykkelig ber om det.**
+  Den har kompressor og styres med `maal`. Luftfukteren kan slås av og på når brukeren ber om det.
+- Svaret er apparatet etter endringen. Ugyldige verdier gir `400`, og et apparat som ikke svarer gir `502`.
+
+`GET /api/tuya/innlogging` viser hvilke apparater som er koblet til (`satt`, `enheter`). Tilkoblingen gjøres av
+brukeren på websiden med Smart Life-appen; en assistent skal ikke starte eller fjerne den.
+
 ### `GET /helse`
 
 `200 {"ok": true}` når Tibber og Zaptec svarer, ellers `503 {"ok": false}`.
@@ -254,6 +288,8 @@ ikke lagre eller endre innloggingen; det gjør brukeren på websiden.
 | Brukte vi mye fordi det var kaldt? | `/api/regning`: `graddager` per måned, og `temperatur.modell` (`b`, `r2`) |
 | Fyrte vi med ved i går? | `/api/regning`: `temperatur.dogn[]` (`ved`) |
 | Hvor mye strøm bruker varmepumpen? | `varmepumpe.energi.idag_kwh`, og `timer[].vp` per time |
+| Hvor fuktig er det inne / i kjelleren? | `tuya.enheter[].fukt` (og `.temp`), med `navn` |
+| Må tanken tømmes eller fylles? | `tuya.enheter[].varsler` |
 | Er vi nær neste kapasitetstrinn? | `effektvarsel.niva`, `effektvarsel.prognose` mot `effektvarsel.grense` |
 | Hva blir strømregningen? | `/api/regning`: `inneverende.prognose.sum` |
 | Hva har elbilen kostet? | `/api/regning`: `elbil.totalt.sum + elbil.kapasitet_ekstra` |
@@ -265,6 +301,8 @@ ikke lagre eller endre innloggingen; det gjør brukeren på websiden.
 - **Varmepumpen:** styres via MELCloud Home sitt uoffisielle API, med noen sekunders forsinkelse.
   Innetemperaturen (`rom`) måles av pumpas IR-sensor, altså overflater i rommet, ikke lufta. Ved vedfyring viser
   den gjerne mer enn ønsket temperatur.
+- **Luftfukter/avfukter:** strømforbruket måles ikke. `historikk[][3]` (andel av timen apparatet var på) kan
+  brukes til et grovt anslag. Apparatene må være på samme nett som serveren.
 - **Utetemperaturen** kommer fra varmepumpas utedel og finnes fra slutten av august 2026. Eldre måneder har
   ikke graddager.
 - **Faste innstillinger:** modus, avreisetid og normalt antall timer settes i `.env` og krever omstart.
