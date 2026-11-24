@@ -248,7 +248,7 @@ Apparatene styres lokalt på hjemmenettet (Tuya-protokollen), uten sky. Status s
 Send bare det som skal endres:
 
 ```json
-{"enhet": "<id>", "maal": 45, "modus": "humidity", "niva": "level_2", "varme": false}
+{"enhet": "<id>", "maal": 45, "modus": "manual", "niva": "level_2", "varme": false}
 ```
 
 - `maal`: innenfor `evner.maal`, i hele steg (`steg`, typisk 5 %). Kan ikke settes når `modus` står i
