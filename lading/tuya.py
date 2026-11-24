@@ -53,9 +53,9 @@ PROFILER = {
         "type": "avfukter", "modell": "Anslut avfukter 20 l", "kompressor": True,
         "paa": 1, "fukt": 6, "temp": 7,
         "maal": {"dp": 2, "min": 30, "maks": 80, "steg": 5},
-        "modus": {"dp": 5, "valg": {"Auto": "Auto", "Continuities": "Kontinuerlig", "Sleep": "Natt"}},
+        "modus": {"dp": 5, "valg": {"Auto": "Auto", "Continuities": "Sterk", "Sleep": "Søvn"}},
         "niva": {"dp": 4, "navn": "Vifte", "valg": {"low": "Lav", "high": "Høy"}},
-        "brytere": {"ionisator": (10, "Ionisator"), "barnesikring": (16, "Barnesikring")},
+        "brytere": {"barnesikring": (16, "Barnesikring")},
         "feil": {"dp": 19, "bits": {1: "tanken er full", 2: "filteret må rengjøres", 4: "E1: feil på temperaturføleren",
                                     8: "CL: for kaldt", 16: "CH: for varmt", 32: "LO: for lav luftfuktighet",
                                     64: "feil på kjøleelementet", 128: "feil på viften"}},
@@ -386,14 +386,25 @@ class Tuya:
         dev = self._enhet(m)
         if dev is None:
             raise RuntimeError("enheten er ikke funnet på nettet")
-        async with self.laas:
-            r = await asyncio.to_thread(dev.set_multiple_values, dps)
-        if isinstance(r, dict) and r.get("Error"):
-            raise RuntimeError(f"{m.get('navn')} svarte ikke: {r['Error']}")
-        if isinstance(r, dict) and isinstance(r.get("dps"), dict):
-            self.dps.setdefault(m["id"], {}).update(r["dps"])
-        else:
-            self.dps.setdefault(m["id"], {}).update(dps)
+        # Wilfa setter ønsket fuktighet til 30 % ved modusbytte; send den gamle verdien på nytt etterpå.
+        p = _profil(m)
+        behold = None
+        if "modus" in d and "maal" not in d and p and "maal" in p and naa.get("maal") is not None \
+                and d["modus"] not in p["maal"].get("ikke_i_modus", []):
+            behold = {str(p["maal"]["dp"]): int(naa["maal"])}
+        for kommando in (dps, behold):
+            if not kommando:
+                continue
+            async with self.laas:
+                r = await asyncio.to_thread(dev.set_multiple_values, kommando)
+            if isinstance(r, dict) and r.get("Error"):
+                raise RuntimeError(f"{m.get('navn')} svarte ikke: {r['Error']}")
+            # Svaret kan mangle noen av datapunktene; det som ble sendt, gjelder til neste avlesning.
+            self.dps.setdefault(m["id"], {}).update(kommando)
+            if isinstance(r, dict) and isinstance(r.get("dps"), dict):
+                self.dps[m["id"]].update({k: v for k, v in r["dps"].items() if k not in kommando})
+            if behold and kommando is dps:
+                await asyncio.sleep(1)
         log.info("%s: %s", m.get("navn"), d)
         self._publiser()
         self.vekk.set()
