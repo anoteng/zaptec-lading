@@ -1,6 +1,7 @@
 """Ladeplan: hvilke timer bilen skal lade i vinduet fram til avreise.
 
-Uten batterinivå fra bilen antar vi et fast antall ladetimer per døgn. Timene rangeres etter nettleiens
+Bilen melder ikke batterinivå. Antall ladetimer er enten et fast antall per døgn, eller regnes ut fra
+batteriprosenten brukeren har lagt inn (se styring.batteribehov). Timene rangeres etter nettleiens
 energiledd (pri 1) og deretter spotpris (pri 3, bra for nettet). Effekten i hver time styres av vakta.
 """
 import datetime as dt
@@ -27,8 +28,11 @@ def _blokker(timer: list[int]) -> int:
     return sum(1 for i, t in enumerate(timer) if i == 0 or t - timer[i - 1] > 3600)
 
 
-def lag(db: DB, cfg: dict, naa: dt.datetime, antall: int) -> dict:
-    """Velger de `antall` gunstigste timene i vinduet. Timer som allerede er ladet, teller med."""
+def lag(db: DB, cfg: dict, naa: dt.datetime, antall: int = 0, behov: int | None = None) -> dict:
+    """Velger de `antall` gunstigste timene i vinduet. Timer som allerede er ladet, teller med.
+
+    Med `behov` gis antallet timer som trengs fra nå av i stedet (ladede timer kommer i tillegg).
+    """
     sc = cfg["styring"]
     start, avreise = vindu(cfg, naa)
     s_ts, a_ts = int(start.timestamp()), int(avreise.timestamp())
@@ -46,7 +50,10 @@ def lag(db: DB, cfg: dict, naa: dt.datetime, antall: int) -> dict:
                       "ladet_kwh": round(ladet.get(t, 0.0), 2), "forbi": t < denne, "valgt": False})
 
     brukt = sum(1 for x in timer if x["forbi"] and x["ladet_kwh"] >= sc["ladetime_min_kwh"])
-    behov = max(0, antall - brukt)
+    if behov is None:
+        behov = max(0, antall - brukt)
+    else:
+        antall = brukt + behov
     kandidater = [x for x in timer if not x["forbi"]]
     nokkel = lambda x: (round(x["energiledd"], 4), x["spot"] if x["spot"] is not None else (snitt or 0.0), x["start"])
     valgt = sorted(kandidater, key=nokkel)[:behov]
@@ -58,4 +65,4 @@ def lag(db: DB, cfg: dict, naa: dt.datetime, antall: int) -> dict:
         x["valgt"] = True
     return {"start": s_ts, "avreise": a_ts, "antall": antall, "brukt": brukt, "behov": behov,
             "timer": timer, "valgte": sorted(x["start"] for x in valgt),
-            "mangler_spot": sum(1 for x in kandidater if x["spot"] is None)}
+            "mangler_spot": sum(1 for x in kandidater if x["spot"] is None), "rekker_ikke": behov > len(kandidater)}

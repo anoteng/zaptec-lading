@@ -31,7 +31,7 @@ curl -s -X POST http://127.0.0.1:8093/api/overstyring \
    gjelder til den utløper eller blir erstattet, og den kan koste penger.
 3. **Forklar konsekvensen av «lad nå».** Den lader for fullt og ignorerer taket for kapasitetstrinnet.
    Midt på dagen kan det løfte hele månedens nettleie ett trinn, typisk 100–200 kr/mnd ekstra (se
-   `maaned.trinn` og `maaned.tak_idag`). Foreslå heller `timer` hvis brukeren bare vil ha mer lading i natt.
+   `maaned.trinn` og `maaned.tak_idag`). Foreslå heller `batteri` (eller `timer`) hvis brukeren bare vil ha mer lading i natt.
 4. **Ikke veksle fram og tilbake.**
    - Hver overgang mellom lading og pause bruker et av laderens få stopp per tilkobling (Zaptec Go tåler 5).
      Etter `maks_stopp` lader styringen på minimum i stedet for å pause.
@@ -78,13 +78,16 @@ De viktigste feltene:
 | `handling` | Hva styringen gjør nå, i klartekst, f.eks. «lader med 24 A», «pauset», «bilen er full» eller «bilen er ikke tilkoblet» |
 | `grunn` | Hvorfor, f.eks. «venter til 01:00» eller «timetak 9.7 kWh: …» |
 | `lade`, `strom` | Om styringen vil lade akkurat nå, og med hvor mange ampere |
-| `overstyring` | `null` (automatisk) eller `{type, satt, til, timer?}` |
+| `overstyring` | `null` (automatisk) eller `{type, satt, til, timer?, prosent?, maal?}` |
+| `batteri` | `null`, eller ved `batteri`-overstyring: `prosent` (lagt inn), `maal`, `prosent_naa` (anslått), `levert_kwh` siden, `trenger_kwh`, `kwh_per_time` (vanlig ladefart) og `timer` som trengs fra nå |
+| `maal_prosent` | Standard mål for batteriprosent |
 | `plan.valgte` | Starttidspunktene for de planlagte ladetimene |
 | `plan.timer[]` | Hver time fram til avreise: `start`, `energiledd`, `spot`, `valgt`, `ladet_kwh`, `forbi` |
 | `plan.antall`, `plan.brukt`, `plan.avreise` | Ønsket antall ladetimer, hvor mange som allerede er ladet, og avreisetid |
+| `plan.rekker_ikke` | `true` når det trengs flere timer enn det er igjen før avreise |
 | `tak.kwh` | Timetaket styringen holder huset under |
 | `stopp_i_okt` | Stopp brukt i denne tilkoblingen |
-| `ferdig` | `null`, eller `{ts, okt_kwh, grunn}` når bilen er registrert som full i denne tilkoblingen. Da lader ikke styringen mer før bilen kobles fra. `lad_naa` eller `timer` nullstiller den |
+| `ferdig` | `null`, eller `{ts, okt_kwh, grunn}` når bilen er registrert som full i denne tilkoblingen. Da lader ikke styringen mer før bilen kobles fra. `lad_naa`, `timer` eller `batteri` nullstiller den |
 | `advarsler[]` | F.eks. at Eco-modus er på i Zaptec |
 | `logg[]` | Siste beslutninger, nyeste først: `ts`, `handling`, `detaljer`, `utfort`, `feil` |
 
@@ -106,7 +109,7 @@ Tjenesten sender selv push-varsel.
 
 ### `POST /api/overstyring`: styr ladingen
 
-Body: `{"type": "<type>"}`, og for `timer` også `"timer": N`.
+Body: `{"type": "<type>"}`, for `timer` også `"timer": N`, og for `batteri` også `"prosent": P` og eventuelt `"maal": M`.
 
 | `type` | Virkning | Varer til |
 |---|---|---|
@@ -114,6 +117,7 @@ Body: `{"type": "<type>"}`, og for `timer` også `"timer": N`.
 | `lad_naa` | Lader nå med full strøm, **uten** tak for kapasitetstrinnet. Fasevakta gjelder fortsatt | 12 timer, eller til bilen kobles fra |
 | `pause` | Ingen lading | Neste avreise (standard 07:00) |
 | `timer` | `timer` = 0–24 ladetimer i vinduet fram til neste avreise. Timer som allerede er ladet, teller med | Neste avreise |
+| `batteri` | `prosent` = batterinivået bilen viser nå (0–100), `maal` = ønsket nivå (standard `maal_prosent`, 100). Timer regnes ut fra behovet i kWh (`batteri_kwh`, `virkningsgrad`) og vanlig ladefart, og de gunstigste velges | Neste avreise, eller til bilen kobles fra |
 
 En ny overstyring erstatter den forrige. Bare én kan gjelde om gangen.
 
@@ -281,6 +285,7 @@ brukeren på websiden med Smart Life-appen; en assistent skal ikke starte eller 
 |---|---|
 | Lader bilen nå? | `lader.modus == 3`, effekt i `lader.effekt_w` |
 | Når lader den i natt? | `styring.plan.valgte` (sammenhengende timer kan slås sammen til intervaller) |
+| «Bilen er på 25 %, rekker den?» | `POST /api/overstyring` med `{"type":"batteri","prosent":25}`, og les så `styring.batteri` og `styring.plan.rekker_ikke` |
 | Hvorfor lader den ikke? | `styring.handling` og `styring.grunn` |
 | Er bilen full? | `styring.ferdig` (ikke `null`), eller `lader.modus` 5 med `lader.final_stop` `false` |
 | Hva koster strømmen nå? | Raden i `priser` der `start <= nå < start + 3600`, feltet `din_pris` |
@@ -297,7 +302,8 @@ brukeren på websiden med Smart Life-appen; en assistent skal ikke starte eller 
 
 ## Begrensninger
 
-- **Bilen:** batterinivå er ikke kjent. Styringen bruker et fast antall ladetimer per natt.
+- **Bilen:** batterinivå meldes ikke. Uten innlagt batteriprosent brukes et fast antall ladetimer per natt.
+  Med `batteri` er nivået underveis et anslag ut fra levert energi og `virkningsgrad`.
 - **Laderen:** ladestrømmen i ampere kan ikke settes direkte, og det finnes ikke noe kWh-mål.
 - **Varmepumpen:** styres via MELCloud Home sitt uoffisielle API, med noen sekunders forsinkelse.
   Innetemperaturen (`rom`) måles av pumpas IR-sensor, altså overflater i rommet, ikke lufta. Ved vedfyring viser

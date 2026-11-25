@@ -45,9 +45,23 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
     async def forside(_):
         return web.FileResponse(STATISK / "index.html", headers={"Cache-Control": "no-cache"})
 
+    # Filer for installerbar app (PWA). Bare disse serveres fra static/.
+    APPFILER = {"manifest.webmanifest": "application/manifest+json", "sw.js": "text/javascript",
+                "ikon-192.png": "image/png", "ikon-512.png": "image/png", "ikon-maskerbar-512.png": "image/png",
+                "apple-touch-icon.png": "image/png"}
+
+    async def appfil(req: web.Request):
+        navn = req.path.lstrip("/")
+        if navn not in APPFILER:
+            raise web.HTTPNotFound()
+        hoder = {"Content-Type": APPFILER[navn], "Cache-Control": "no-cache" if navn in ("sw.js", "manifest.webmanifest")
+                 else "public, max-age=604800"}
+        return web.FileResponse(STATISK / navn, headers=hoder)
+
     async def api_status(_):
         data = status.bygg(db, cfg, tilstand)
-        data["styring"] = {**(tilstand.styring or {}), "modus": cfg["styring"]["modus"], "logg": styring.logg(db)}
+        data["styring"] = {**(tilstand.styring or {}), "modus": cfg["styring"]["modus"],
+                           "maal_prosent": cfg["styring"]["maal_prosent"], "logg": styring.logg(db)}
         return web.json_response(data, headers={"Cache-Control": "no-store"})
 
     def ikke_csrf(req: web.Request) -> bool:
@@ -59,7 +73,7 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
             return web.json_response({"feil": "mangler X-Lading-header"}, status=403)
         try:
             d = await req.json()
-            o = styring.sett_overstyring(db, cfg, d.get("type"), d.get("timer"))
+            o = styring.sett_overstyring(db, cfg, d.get("type"), d.get("timer"), d.get("prosent"), d.get("maal"))
         except (ValueError, TypeError) as e:
             return web.json_response({"feil": str(e)}, status=400)
         log.info("overstyring: %s", o or "auto")
@@ -178,6 +192,8 @@ def lag_app(cfg: dict, db: DB, tilstand: Tilstand) -> web.Application:
 
     app = web.Application(middlewares=[vertsjekk])
     app.router.add_get("/", forside)
+    for navn in APPFILER:
+        app.router.add_get("/" + navn, appfil)
     app.router.add_get("/api/status", api_status)
     app.router.add_get("/api/regning", api_regning)
     app.router.add_post("/api/overstyring", api_overstyring)

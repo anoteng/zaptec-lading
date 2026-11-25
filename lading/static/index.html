@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lading</title>
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lading">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%232a78d6' d='M13 2 4 14h7l-1 8 9-12h-7z'/%3E%3C/svg%3E">
 <style>
 :root {
@@ -136,6 +144,13 @@ td .forkl { display: block; color: var(--muted); font-size: 12px; }
           <input type="number" id="st-antall" min="0" max="24" step="1" aria-label="Antall ladetimer"> timer i natt
           <button data-type="timer">Bruk</button></span>
       </div>
+      <div class="knapper" id="st-batteri-knapper" style="margin-top:-2px">
+        <span style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap">Batteri nå
+          <input type="number" id="st-prosent" min="0" max="99" step="1" inputmode="numeric" aria-label="Batteriprosent nå"> %, lad til
+          <input type="number" id="st-maal" min="1" max="100" step="5" inputmode="numeric" aria-label="Mål for batteriprosent"> %
+          <button data-type="batteri" title="Regner ut hvor mange timer som trengs, og velger de gunstigste før avreise">Beregn timer</button></span>
+      </div>
+      <div class="sub" id="st-batteri"></div>
       <div class="sub" id="st-overstyring"></div>
       <details><summary>Siste beslutninger</summary><div id="st-logg"></div></details>
     </div>
@@ -504,7 +519,7 @@ function tegn(d) {
 }
 
 // Styring
-const OVERSTYRING = { lad_naa: "Lad nå", pause: "Ikke lad i natt", timer: "Egendefinert antall timer" };
+const OVERSTYRING = { lad_naa: "Lad nå", pause: "Ikke lad i natt", timer: "Egendefinert antall timer", batteri: "Timer ut fra batteriprosent" };
 const klokke = ts => new Date(ts * 1000).toLocaleString("nb-NO", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 function tegnStyring(st) {
   if (!st) return;
@@ -528,10 +543,20 @@ function tegnStyring(st) {
     }).join("");
   }
   const o = st.overstyring;
-  document.querySelectorAll("#st-knapper button").forEach(b => b.classList.toggle("valgt",
+  document.querySelectorAll("#st-knapper button, #st-batteri-knapper button").forEach(b => b.classList.toggle("valgt",
     o ? b.dataset.type === o.type : b.dataset.type === "auto"));
   const inp = $("st-antall");
   if (document.activeElement !== inp) inp.value = p ? p.antall : "";
+  const b = st.batteri;
+  if (document.activeElement !== $("st-prosent") && document.activeElement !== $("st-maal") && !batteriEndret) {
+    $("st-prosent").value = b ? Math.round(b.prosent_naa) : "";
+    $("st-maal").value = b ? b.maal : (st.maal_prosent || 100);
+  }
+  $("st-batteri").innerHTML = b ? `Anslått batteri nå: <b>${nf(b.prosent_naa, 0)} %</b> (lagt inn ${nf(b.prosent, 0)} %, ladet ${nf(b.levert_kwh, 1)} kWh siden). ` +
+    (b.timer ? `Trenger ca. ${nf(b.trenger_kwh, 0)} kWh til ${nf(b.maal, 0)} %, rundt ${b.timer} ${b.timer === 1 ? "time" : "timer"} med ${nf(b.kwh_per_time, 1)} kWh i timen.`
+             : `Målet på ${nf(b.maal, 0)} % er anslått nådd.`) +
+    (p && p.rekker_ikke ? ` <span class="err">Rekker ikke helt før avreise: det er bare ${p.timer.filter(x => !x.forbi).length} timer igjen.</span>` : "")
+    : `<span class="muted">Legg inn batteriprosenten fra bilen, så regnes antall ladetimer ut.</span>`;
   $("st-overstyring").textContent = o ? `${OVERSTYRING[o.type] || o.type}${o.type === "timer" ? ` (${o.timer})` : ""} gjelder til ${klokke(o.til)}.` : "Automatisk: de gunstigste timene før avreise.";
   if (st.tak && st.tak.kwh != null) $("st-overstyring").textContent += ` Timetak ${nf(st.tak.kwh, 1)} kWh (${st.tak.kilde}).`;
   $("st-logg").innerHTML = (st.logg || []).length ? tabell([
@@ -545,13 +570,23 @@ function tegnStyring(st) {
 async function overstyr(type) {
   const body = { type };
   if (type === "timer") body.timer = +$("st-antall").value;
+  if (type === "batteri") {
+    if ($("st-prosent").value === "") { $("st-prosent").focus(); return; }
+    body.prosent = +$("st-prosent").value; body.maal = +$("st-maal").value || 100;
+  }
   try {
     const r = await fetch("api/overstyring", { method: "POST", headers: { "Content-Type": "application/json", "X-Lading": "1" }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error((await r.json()).feil || "HTTP " + r.status);
+    batteriEndret = false;
     setTimeout(oppdater, 1500);
   } catch (e) { $("st-overstyring").innerHTML = `<span class="err">Klarte ikke å lagre: ${esc(e.message)}</span>`; }
 }
-document.querySelectorAll("#st-knapper button").forEach(b => b.addEventListener("click", () => overstyr(b.dataset.type)));
+let batteriEndret = false;  // ikke overskriv det brukeren holder på å skrive når statusen oppdateres
+document.querySelectorAll("#st-knapper button, #st-batteri-knapper button").forEach(b => b.addEventListener("click", () => overstyr(b.dataset.type)));
+["st-prosent", "st-maal"].forEach(id => {
+  $(id).addEventListener("input", () => { batteriEndret = true; });
+  $(id).addEventListener("keydown", e => { if (e.key === "Enter") overstyr("batteri"); });
+});
 
 // Strømregning
 const kr = x => x == null ? "–" : `${nf(x, 0)} kr`;
@@ -1173,6 +1208,11 @@ setInterval(oppdater, 10000);
 oppdaterRegning();
 setInterval(oppdaterRegning, 60000);
 let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { sist && tegn(sist); sistRegning && tegnRegning(sistRegning); }, 150); });
+
+// Installerbar app: service worker (krever https, eller localhost).
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("sw.js").catch(e => console.warn("service worker:", e));
+}
 </script>
 </body>
 </html>

@@ -5,7 +5,8 @@ Modus i config.toml [styring]:
   dryrun  – regner og logger hva den ville gjort, sender ingen kommandoer
   aktiv   – sender kommandoer til laderen (pause/gjenoppta og tilgjengelig strøm)
 
-Overstyring fra websiden (lagres i databasen): auto, lad_naa, pause, timer (N timer i dette vinduet).
+Overstyring fra websiden (lagres i databasen): auto, lad_naa, pause, timer (N timer i dette vinduet) og
+batteri (batteriprosent nå og mål; antall timer regnes ut av energibehovet og den vanlige ladefarten).
 
 Bilen full: stopper bilen ladingen selv (eller trekker nesten ingenting over tid) etter å ha ladet i denne
 tilkoblingen, lagres det i databasen. Da lar styringen laderen være (ingen gjenopptak eller pause, bare
@@ -29,12 +30,14 @@ from .zaptec import Zaptec
 log = logging.getLogger("lading.styring")
 PAUSE, GJENOPPTA = 506, 507
 TICK = 15
-OVERSTYRINGER = ("auto", "lad_naa", "pause", "timer")
+OVERSTYRINGER = ("auto", "lad_naa", "pause", "timer", "batteri")
 FERDIG = "bil_ferdig"
 FERDIG_MIN = 10       # bilen har stått stoppet av seg selv så lenge (ikke pauset av oss)
 TRIKLE_MIN = 30       # eller trukket under TRIKLE_KW så lenge, selv om den har fått lade
 TRIKLE_KW = 0.5
 MIN_OKT_KWH = 0.5     # bilen må ha ladet litt i denne tilkoblingen
+FART_MIN_KWH = 3.0    # timer med minst så mye lading brukes til å finne vanlig ladefart
+FART_DAGER = 60
 
 
 def overstyring(db: DB, naa_ts: float) -> dict | None:
@@ -45,13 +48,41 @@ def overstyring(db: DB, naa_ts: float) -> dict | None:
     return o
 
 
-def sett_overstyring(db: DB, cfg: dict, type_: str, timer: int | None = None) -> dict | None:
+def ladefart(db: DB, cfg: dict, naa_ts: float) -> float:
+    """Vanlig kWh per ladetime: median av timer med full lading siste dager, ellers regnet fra maks strøm."""
+    rader = [r["kwh"] for r in db.alle("SELECT kwh FROM time_lader WHERE time >= ? AND time < ? AND kwh >= ? ORDER BY kwh",
+                                        naa_ts - FART_DAGER * 86400, time_av(naa_ts), FART_MIN_KWH)]
+    if len(rader) >= 3:
+        return round(rader[len(rader) // 2], 2)
+    sc = cfg["styring"]
+    return round(sc["maks_strom"] * sc["volt"] / 1000 * 0.95, 2)
+
+
+def batteribehov(db: DB, cfg: dict, o: dict, naa_ts: float) -> dict:
+    """Anslått batterinivå nå og timer som trengs for å nå målet, ut fra det laderen har levert siden."""
+    sc = cfg["styring"]
+    kap, eta = sc["batteri_kwh"], sc["virkningsgrad"]
+    levert = db.en("SELECT COALESCE(SUM(kwh), 0) k FROM time_lader WHERE time >= ?", time_av(o["satt"]))["k"]
+    levert = max(0.0, levert - o.get("kwh_ved_start", 0.0))
+    naa_pst = min(100.0, o["prosent"] + levert * eta / kap * 100)
+    trenger = max(0.0, (o["maal"] - naa_pst) / 100 * kap / eta)
+    fart = ladefart(db, cfg, naa_ts)
+    # Timen vi er i, har bare resten igjen: regn den delen som allerede er gått, som brukt. Litt slingringsmonn
+    # så 13,01 kWh ved 6,5 kWh/t ikke blir tre timer.
+    gaatt = (naa_ts - time_av(naa_ts)) / 3600
+    timer = math.ceil(trenger / fart + gaatt - 0.05) if trenger > 0.1 else 0
+    return {"prosent": o["prosent"], "maal": o["maal"], "prosent_naa": round(naa_pst, 1), "levert_kwh": round(levert, 1),
+            "trenger_kwh": round(trenger, 1), "kwh_per_time": fart, "timer": max(0, timer)}
+
+
+def sett_overstyring(db: DB, cfg: dict, type_: str, timer: int | None = None,
+                     prosent: float | None = None, maal: float | None = None) -> dict | None:
     if type_ not in OVERSTYRINGER:
         raise ValueError(f"ukjent type {type_!r}, gyldige: {', '.join(OVERSTYRINGER)}")
     if type_ == "auto":
         db.lagre("overstyring", None)
         return None
-    if type_ in ("lad_naa", "timer") and db.hent(FERDIG):
+    if type_ in ("lad_naa", "timer", "batteri") and db.hent(FERDIG):
         db.lagre(FERDIG, None)  # brukeren vil lade likevel
         log.info("«bilen er full» nullstilt: overstyring %s", type_)
     naa_dt = naa()
@@ -64,6 +95,15 @@ def sett_overstyring(db: DB, cfg: dict, type_: str, timer: int | None = None) ->
         if timer is None or not 0 <= timer <= 24:
             raise ValueError("timer må være 0–24")
         o["timer"] = int(timer)
+    if type_ == "batteri":
+        maal = cfg["styring"]["maal_prosent"] if maal is None else maal
+        if prosent is None or not 0 <= float(prosent) <= 100:
+            raise ValueError("batteriprosent må være 0–100")
+        if not float(prosent) < float(maal) <= 100:
+            raise ValueError("målet må være over batteriprosenten nå og høyst 100")
+        denne = time_av(naa_dt.timestamp())
+        r = db.en("SELECT kwh FROM time_lader WHERE time = ?", denne)
+        o.update(prosent=round(float(prosent), 1), maal=round(float(maal), 1), kwh_ved_start=r["kwh"] if r else 0.0)
     db.lagre("overstyring", o)
     return o
 
@@ -108,13 +148,16 @@ class Styring:
         """Hva vi vil: lade eller ikke, og med hvilken strøm. Ren beregning uten sideeffekter."""
         sc, t = self.sc, self.tilstand
         o = overstyring(self.db, naa_ts)
-        antall = o["timer"] if o and o["type"] == "timer" else sc["timer_per_dogn"]
-        p = plan.lag(self.db, self.cfg, lokal(naa_ts), antall)
+        batteri = batteribehov(self.db, self.cfg, o, naa_ts) if o and o["type"] == "batteri" else None
+        if batteri:
+            p = plan.lag(self.db, self.cfg, lokal(naa_ts), behov=batteri["timer"])
+        else:
+            p = plan.lag(self.db, self.cfg, lokal(naa_ts), o["timer"] if o and o["type"] == "timer" else sc["timer_per_dogn"])
         denne = time_av(naa_ts)
         tak = timetak(self.db, self.cfg, t, naa_ts)
         ferdig = self.db.hent(FERDIG)
         ut = {"ts": naa_ts, "overstyring": o, "plan": p, "tak": tak, "lade": False, "strom": None, "grunn": "",
-              "ferdig": ferdig}
+              "ferdig": ferdig, "batteri": batteri}
 
         if o and o["type"] == "pause":
             ut["grunn"] = "pauset manuelt"
@@ -123,7 +166,10 @@ class Styring:
         ferdig = ferdig if not lad_naa else None
         if not lad_naa and not ferdig and denne not in p["valgte"]:
             nest = next((s for s in p["valgte"] if s > denne), None)
-            ut["grunn"] = f"venter til {lokal(nest):%H:%M}" if nest else "ingen flere ladetimer før avreise"
+            if batteri and not batteri["timer"]:
+                ut["grunn"] = f"batteriet er anslått å være på {batteri['prosent_naa']:.0f} % (mål {batteri['maal']:.0f} %)"
+            else:
+                ut["grunn"] = f"venter til {lokal(nest):%H:%M}" if nest else "ingen flere ladetimer før avreise"
             return ut
 
         # Effektvakt: hvor mye kan laderen bruke resten av timen uten å bryte taket?
@@ -232,8 +278,9 @@ class Styring:
         if lader.get("ts") is not None:
             if tilkoblet and not self.var_tilkoblet:
                 self.stopp_i_okt = 0
-            if not tilkoblet and self.var_tilkoblet and (u["overstyring"] or {}).get("type") == "lad_naa":
-                self.db.lagre("overstyring", None)  # «lad nå» gjelder til bilen kobles fra
+            if not tilkoblet and self.var_tilkoblet and (u["overstyring"] or {}).get("type") in ("lad_naa", "batteri"):
+                # «Lad nå» gjelder til bilen kobles fra, og batteriprosenten stemmer ikke etter en kjøretur.
+                self.db.lagre("overstyring", None)
             self.var_tilkoblet = tilkoblet
         if modus == 3:
             self.gjenopptak_uten_lading = 0

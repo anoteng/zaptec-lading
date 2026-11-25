@@ -33,14 +33,17 @@ Prioriteringene er, i rekkefølge:
 - **Bilen full:** stopper bilen ladingen selv etter å ha ladet i denne tilkoblingen (i 10 minutter), eller
   trekker den under 0,5 kW i 30 minutter, regnes den som full. Da prøver ikke styringen å starte ladingen igjen
   i senere planlagte timer, og den pauser heller ikke bilen. Effektvakta begrenser fortsatt strømmen hvis bilen
-  trekker noe, f.eks. til forvarming. Statusen nullstilles når bilen kobles fra, og «Lad nå» eller et eget
-  antall timer overstyrer den.
+  trekker noe, f.eks. til forvarming. Statusen nullstilles når bilen kobles fra, og «Lad nå», et eget
+  antall timer eller batteriprosent overstyrer den.
 - **Effektvarsel:** push-varsel mens timen pågår hvis forbruket *utenom* bilen ligger an til å øke
   kapasitetstrinnet. Varselet sier hvor mye som må skrus av, og hvor lenge (se [Varsler](#varsler)).
 - **Overstyring fra websiden:**
   - **Lad nå:** full effekt uten trinngrense, til bilen kobles fra.
   - **Ikke lad i natt.**
   - **Annet antall timer** i natt.
+  - **Batteriprosent:** legg inn hva bilen viser og hvor høyt den skal lades, så regnes antall timer ut. Behovet
+    i kWh deles på vanlig ladefart (medianen av timer med full lading de siste 60 dagene). Siden viser anslått
+    batterinivå underveis, ut fra det laderen har levert. Gjelder til avreise, eller til bilen kobles fra.
   - **Automatisk:** tilbake til planen.
 - **Sikkerhetsnett:**
   - Mangler data fra Pulse, lader den med forsiktig strøm.
@@ -363,17 +366,28 @@ timesnitt (`time_fukt`).
 | `GET /api/regning` | Strømregning: hittil, prognose, per måned og elbilkostnad |
 | `GET /api/innstillinger` | Strømavtale og støtteordning |
 | `POST /api/innstillinger` | Lagre strømavtale og støtteordning, eller `{"tilbakestill": true}` |
-| `POST /api/overstyring` | `{"type": "auto" \| "lad_naa" \| "pause" \| "timer", "timer": N}` |
+| `POST /api/overstyring` | `{"type": "auto" \| "lad_naa" \| "pause" \| "timer" \| "batteri", "timer": N, "prosent": P, "maal": M}` |
 | `POST /api/varmepumpe` | Styr varmepumpen, f.eks. `{"temperatur": 21.5}` eller `{"paa": false}` |
 | `POST /api/varmepumpe/program` | Endre ukeprogrammet: lagre eller slette punkt, eller slå programmet av/på |
 | `GET/POST /api/varmepumpe/innlogging` | Om innlogging til MELCloud Home er lagt inn, eller lagre/fjern den |
 | `POST /api/tuya` | Styr luftfukter/avfukter, f.eks. `{"enhet": "<id>", "maal": 45}` |
 | `GET/POST /api/tuya/innlogging` | Hvilke apparater som er koblet til, eller start innlogging med Smart Life / fjern |
+| `GET /manifest.webmanifest`, `/sw.js` | Gjør siden installerbar som app (se under) |
 | `GET /helse` | 200 når Tibber og Zaptec svarer, ellers 503 (for overvåking) |
 
 POST krever `Content-Type: application/json` og headeren `X-Lading: 1`.
 Forespørsler med andre vertsnavn enn `127.0.0.1`, `localhost`, `::1` og `LADING_WEB_VERTER` avvises med 421.
 [API.md](API.md) beskriver alle felt og er skrevet slik at den kan gis til en KI-assistent på samme maskin.
+
+## Som app på mobilen
+
+Siden kan installeres som app (PWA) når den nås over https, f.eks. gjennom tunnelen over:
+- **Android (Chrome):** menyen ⋮ → «Installer app» eller «Legg til på startskjermen».
+- **iPhone (Safari):** del-knappen → «Legg til på Hjem-skjerm».
+
+Appen åpnes i eget vindu uten adresselinje. Den henter alltid siden fra serveren. Er serveren utilgjengelig,
+vises siste kopi uten data. Med Cloudflare Access sendes innloggingen med når manifestet hentes, og utløper den,
+dukker innloggingssiden opp i appen.
 
 ## Data og backup
 
@@ -412,7 +426,7 @@ Databasen vokser med ca. 9 000 rader i døgnet, noen hundre MB i året.
 
 ## Begrensninger
 
-- Antall ladetimer per natt er fast. Batterinivå fra bilen er ikke på plass ennå.
+- Bilen melder ikke batterinivå. Uten innlagt batteriprosent brukes et fast antall ladetimer per natt.
 - Tariffen som følger med, er Elvias. Henting av timeverdier fra nettselskapet virker bare for Elvia.
 - Én lader og én bil.
 - Fasevakta ser på L1 og L3. Det er det måleren gir i IT-nett.
@@ -445,6 +459,7 @@ lading/
   web.py        statusside og API
   finn.py       finner ID-ene til .env
   static/index.html
+  static/manifest.webmanifest, sw.js, ikon-*.png   installerbar app (PWA)
 ```
 
 ## Lisens
