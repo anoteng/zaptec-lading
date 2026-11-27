@@ -827,11 +827,13 @@ function tegnVarmepumpe(v) {
   vp = e;
   const ev = e.evner;
   $("vp-navn").textContent = e.navn;
-  $("vp-temp").innerHTML = (e.rom != null ? `${nf(e.rom, 1)} °C <small>inne</small>` : "–") +
+  $("vp-temp").innerHTML = (e.rom != null ? `${nf(e.rom, 1)} °C <small title="Målt av pumpa selv, oppe ved innedelen. Ofte varmere enn der folk sitter.">ved pumpa</small>` : "–") +
     (v.ute != null ? ` · ${nf(v.ute, 1)} °C <small>ute</small>` : "");
   const en = v.energi || {};
   $("vp-info").innerHTML = [e.paa ? `På: ${esc(VP_MODUS[e.modus] || e.modus)}, ønsket ${nf(e.temperatur, 1)} °C` : "Av",
-    e.paa && e.faktisk_vifte ? `viften går på ${esc(VP_VIFTE[e.faktisk_vifte] || e.faktisk_vifte)}` : "",
+    e.paa && e.faktisk_vifte ? (e.faktisk_vifte === "Off"
+      ? `viften står: pumpa mener ønsket temperatur er nådd (målt ved pumpa) og venter`
+      : `viften går på ${esc(VP_VIFTE[e.faktisk_vifte] || e.faktisk_vifte)}`) : "",
     ev.energimaaler ? `strøm i dag ${nf(en.idag_kwh || 0, 1)} kWh` : "",
     e.feil ? `<span class="err">Feil på varmepumpen${e.feilkode ? ` (kode ${esc(e.feilkode)})` : ""}</span>` : ""]
     .filter(Boolean).join(" · ");
